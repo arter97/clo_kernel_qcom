@@ -2299,7 +2299,7 @@ static void ath11k_dp_rx_h_ppdu(struct ath11k *ar, struct hal_rx_desc *rx_desc,
 				struct ieee80211_rx_status *rx_status)
 {
 	u8 channel_num;
-	u32 center_freq, meta_data;
+	u32 meta_data;
 	struct ieee80211_channel *channel;
 
 	rx_status->freq = 0;
@@ -2312,11 +2312,8 @@ static void ath11k_dp_rx_h_ppdu(struct ath11k *ar, struct hal_rx_desc *rx_desc,
 
 	meta_data = ath11k_dp_rx_h_msdu_start_freq(ar->ab, rx_desc);
 	channel_num = meta_data;
-	center_freq = meta_data >> 16;
 
-	if (center_freq >= 5935 && center_freq <= 7105) {
-		rx_status->band = NL80211_BAND_6GHZ;
-	} else if (channel_num >= 1 && channel_num <= 14) {
+	if (channel_num >= 1 && channel_num <= 14) {
 		rx_status->band = NL80211_BAND_2GHZ;
 	} else if (channel_num >= 36 && channel_num <= 173) {
 		rx_status->band = NL80211_BAND_5GHZ;
