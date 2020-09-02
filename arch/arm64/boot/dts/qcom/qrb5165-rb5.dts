@@ -19,6 +19,7 @@
 	compatible = "qcom,qrb5165-rb5", "qcom,sm8250";
 
 	aliases {
+		hsuart0 = &uart6;
 		serial0 = &uart12;
 		sdhc2 = &sdhc_2;
 	};
@@ -840,6 +841,26 @@
 	};
 };
 
+&qup_uart6_default {
+       ctsrx {
+               pins = "gpio16", "gpio19";
+               drive-strength = <2>;
+               bias-disable;
+       };
+
+       rts {
+               pins = "gpio17";
+               drive-strength = <2>;
+               bias-disable;
+       };
+
+       tx {
+               pins = "gpio18";
+               drive-strength = <2>;
+               bias-pull-up;
+       };
+};
+
 &qupv3_id_0 {
 	status = "okay";
 };
@@ -1306,6 +1327,14 @@
 		pins = "gpio77";
 		function = "gpio";
 		bias-pull-up;
+	};
+};
+
+&uart6 {
+	status = "okay";
+	bluetooth {
+		compatible = "qcom,qca6390-bt";
+		power-domains = <&qca639x>;
 	};
 };
 
