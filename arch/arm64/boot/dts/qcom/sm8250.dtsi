@@ -3580,6 +3580,7 @@
 					qcom,apr-domain = <APR_DOMAIN_ADSP>;
 					#address-cells = <1>;
 					#size-cells = <0>;
+					qcom,intents = <512 20>;
 
 					apr-service@3 {
 						reg = <APR_SVC_ADSP_CORE>;
