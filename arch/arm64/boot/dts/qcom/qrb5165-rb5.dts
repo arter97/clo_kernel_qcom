@@ -631,6 +631,10 @@
 	status = "okay";
 };
 
+&mdss_dp {
+	status = "okay";
+};
+
 &mdss_mdp {
 	status = "okay";
 };
