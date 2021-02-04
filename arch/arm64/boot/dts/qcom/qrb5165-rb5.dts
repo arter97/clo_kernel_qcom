@@ -625,6 +625,15 @@
 /* LS-I2C1 */
 &i2c15 {
 	status = "okay";
+
+	redriver@1c {
+		compatible = "onnn,nb7vpq904m";
+		reg = <0x1c>;
+
+		mode-switch;
+		port {
+		};
+	};
 };
 
 &mdss {
