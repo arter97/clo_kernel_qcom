@@ -122,6 +122,11 @@ extern int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
 #define QCOM_SCM_SMMU_CONFIG_ERRATA1		0x03
 #define QCOM_SCM_SMMU_CONFIG_ERRATA1_CLIENT_ALL	0x02
 
+/* Trusted OS service and function IDs */
+#define QCOM_SCM_SVC_SMCINVOKE         0x06
+#define QCOM_SCM_SMCINVOKE_INVOKE      0x00
+#define QCOM_SCM_SMCINVOKE_CB_RSP      0x01
+
 extern void __qcom_scm_init(void);
 
 /* common error codes */

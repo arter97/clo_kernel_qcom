@@ -114,4 +114,11 @@ extern int qcom_scm_lmh_dcvsh(u32 payload_fn, u32 payload_reg, u32 payload_val,
 extern int qcom_scm_lmh_profile_change(u32 profile_id);
 extern bool qcom_scm_lmh_dcvsh_available(void);
 
+extern int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size, phys_addr_t out_buf,
+			       size_t out_buf_size, int *result, u64 *response_type,
+			       unsigned int *data);
+
+extern int qcom_scm_invoke_callback_response(phys_addr_t out_buf, size_t out_buf_size,
+					     int *result, u64 *response_type,
+					     unsigned int *data);
 #endif

@@ -1056,6 +1056,65 @@ int qcom_scm_ice_set_key(u32 index, const u8 *key, u32 key_size,
 }
 EXPORT_SYMBOL(qcom_scm_ice_set_key);
 
+int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size, phys_addr_t out_buf,
+			size_t out_buf_size, int *result, u64 *response_type, unsigned int *data)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMCINVOKE,
+		.cmd = QCOM_SCM_SMCINVOKE_INVOKE,
+		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL, QCOM_SCM_RW, QCOM_SCM_VAL),
+		.args[0] = in_buf,
+		.args[1] = in_buf_size,
+		.args[2] = out_buf,
+		.args[3] = out_buf_size,
+		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (ret)
+		return ret;
+
+	if (response_type)
+		*response_type = res.result[0];
+
+	if (result)
+		*result = res.result[1];
+
+	return ret;
+}
+EXPORT_SYMBOL(qcom_scm_invoke_smc);
+
+int qcom_scm_invoke_callback_response(phys_addr_t out_buf, size_t out_buf_size, int *result,
+				      u64 *response_type, unsigned int *data)
+{
+	int ret;
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_SMCINVOKE,
+		.cmd = QCOM_SCM_SMCINVOKE_CB_RSP,
+		.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL),
+		.args[0] = out_buf,
+		.args[1] = out_buf_size,
+		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
+	};
+	struct qcom_scm_res res;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	if (ret)
+		return ret;
+
+	if (response_type)
+		*response_type = res.result[0];
+	if (result)
+		*result = res.result[1];
+	if (data)
+		*data = res.result[2];
+
+	return ret;
+}
+EXPORT_SYMBOL(qcom_scm_invoke_callback_response);
+
 /**
  * qcom_scm_hdcp_available() - Check if secure environment supports HDCP.
  *
