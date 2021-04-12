@@ -280,6 +280,7 @@ err_clks_core:
 err_mem_path_disable:
 	icc_set_bw(qce->mem_path, 0, 0);
 err:
+	dev_err(dev, "%s failed : %d\n", __func__, ret);
 	return ret;
 }
 
