@@ -209,4 +209,13 @@ config QCOM_APR
 	  application processor and QDSP6. APR is
 	  used by audio driver to configure QDSP6
 	  ASM, ADM and AFE modules.
+
+config QCOM_SMCINVOKE
+	tristate "Qualcomm smcinvoke driver"
+	depends on ARCH_QCOM
+	select QCOM_SCM
+	help
+	  Driver to enable secure communication beween OS and
+	  Qualcomm Secure Execution Environment(QSEE).
+
 endmenu
