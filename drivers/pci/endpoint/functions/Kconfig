@@ -25,3 +25,5 @@ config PCI_EPF_NTB
 	  device tree.
 
 	  If in doubt, say "N" to disable Endpoint NTB driver.
+
+source "drivers/pci/endpoint/functions/mhi/Kconfig"

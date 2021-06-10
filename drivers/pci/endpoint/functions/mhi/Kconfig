@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# PCI MHI Endpoint Function
+#
+
+config PCI_EPF_MHI
+	tristate "PCI Endpoint MHI driver"
+	depends on PCI_ENDPOINT
+	help
+	   Enable this configuration option to enable the MHI driver
+	   for PCI Endpoint.
+
+	   If in doubt, say "N" to disable Endpoint MHI driver.
