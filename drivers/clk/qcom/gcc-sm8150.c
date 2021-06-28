@@ -3448,6 +3448,15 @@ static struct clk_branch gcc_video_xo_clk = {
 	},
 };
 
+static struct gdsc emac_gdsc = {
+	.gdscr = 0x6004,
+	.pd = {
+		.name = "emac_gdsc",
+	},
+	.pwrsts = PWRSTS_OFF_ON,
+	.flags = POLL_CFG_GDSCR,
+};
+
 static struct gdsc ufs_card_gdsc = {
 	.gdscr = 0x75004,
 	.pd = {
@@ -3736,6 +3745,7 @@ static struct gdsc *gcc_sm8150_gdscs[] = {
 	[UFS_PHY_GDSC] = &ufs_phy_gdsc,
 	[USB30_PRIM_GDSC] = &usb30_prim_gdsc,
 	[USB30_SEC_GDSC] = &usb30_sec_gdsc,
+	[EMAC_GDSC] = &emac_gdsc,
 };
 
 static const struct regmap_config gcc_sm8150_regmap_config = {
