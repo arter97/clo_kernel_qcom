@@ -2981,6 +2981,11 @@ static const struct qmp_phy_combo_cfg sc7180_usb3dpphy_cfg = {
 	.dp_cfg			= &sc7180_dpphy_cfg,
 };
 
+static const struct qmp_phy_combo_cfg sdm845_usb3dpphy_cfg = {
+	.usb_cfg		= &qmp_v3_usb3phy_cfg,
+	.dp_cfg			= &sc7180_dpphy_cfg,
+};
+
 static const struct qmp_phy_cfg qmp_v3_usb3_uniphy_cfg = {
 	.type			= PHY_TYPE_USB3,
 	.nlanes			= 1,
@@ -4952,6 +4957,9 @@ static const struct of_device_id qcom_qmp_phy_of_match_table[] = {
 		.compatible = "qcom,sdm845-qmp-usb3-uni-phy",
 		.data = &qmp_v3_usb3_uniphy_cfg,
 	}, {
+		.compatible = "qcom,sdm845-qmp-usb3-dp-phy",
+		/* It's a combo phy */
+	}, {
 		.compatible = "qcom,sdm845-qmp-ufs-phy",
 		.data = &sdm845_ufsphy_cfg,
 	}, {
@@ -5010,6 +5018,9 @@ static const struct of_device_id qcom_qmp_combo_phy_of_match_table[] = {
 		.data = &sc7180_usb3dpphy_cfg,
 	},
 	{
+		.compatible = "qcom,sdm845-qmp-usb3-dp-phy",
+		.data = &sdm845_usb3dpphy_cfg,
+	}, {
 		.compatible = "qcom,sm8250-qmp-usb3-dp-phy",
 		.data = &sm8250_usb3dpphy_cfg,
 	},
