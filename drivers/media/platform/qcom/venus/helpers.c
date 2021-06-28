@@ -1099,17 +1099,19 @@ static u32 venus_helper_get_work_mode(struct venus_inst *inst)
 	u32 num_mbs;
 
 	mode = VIDC_WORK_MODE_2;
-	if (inst->session_type == VIDC_SESSION_TYPE_DEC) {
-		num_mbs = (ALIGN(inst->height, 16) * ALIGN(inst->width, 16)) / 256;
-		if (inst->hfi_codec == HFI_VIDEO_CODEC_MPEG2 ||
-		    inst->pic_struct != HFI_INTERLACE_FRAME_PROGRESSIVE ||
-		    num_mbs <= NUM_MBS_720P)
-			mode = VIDC_WORK_MODE_1;
-	} else {
-		num_mbs = (ALIGN(inst->out_height, 16) * ALIGN(inst->out_width, 16)) / 256;
-		if (inst->hfi_codec == HFI_VIDEO_CODEC_VP8 &&
-		    num_mbs <= NUM_MBS_4K)
-			mode = VIDC_WORK_MODE_1;
+	if (IS_V6(inst->core)) {
+		if (inst->session_type == VIDC_SESSION_TYPE_DEC) {
+			num_mbs = (ALIGN(inst->height, 16) * ALIGN(inst->width, 16)) / 256;
+			if (inst->hfi_codec == HFI_VIDEO_CODEC_MPEG2 ||
+			    inst->pic_struct != HFI_INTERLACE_FRAME_PROGRESSIVE ||
+			    num_mbs <= NUM_MBS_720P)
+				mode = VIDC_WORK_MODE_1;
+		} else {
+			num_mbs = (ALIGN(inst->out_height, 16) * ALIGN(inst->out_width, 16)) / 256;
+			if (inst->hfi_codec == HFI_VIDEO_CODEC_VP8 &&
+			    num_mbs <= NUM_MBS_4K)
+				mode = VIDC_WORK_MODE_1;
+		}
 	}
 
 	return mode;
