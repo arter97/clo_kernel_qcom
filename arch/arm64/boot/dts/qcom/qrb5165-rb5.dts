@@ -19,6 +19,7 @@
 	compatible = "qcom,qrb5165-rb5", "qcom,sm8250";
 
 	aliases {
+		hsuart0 = &uart6;
 		serial0 = &uart12;
 		sdhc2 = &sdhc_2;
 	};
@@ -223,6 +224,24 @@
 		regulator-max-microvolt = <1800000>;
 		regulator-always-on;
 	};
+
+	qca639x: qca639x {
+		compatible = "qcom,qca639x";
+		#power-domain-cells = <0>;
+
+		vddaon-supply = <&vreg_s6a_0p95>;
+		vddpmu-supply = <&vreg_s2f_0p95>;
+		vddrfa1-supply = <&vreg_s2f_0p95>;
+		vddrfa2-supply = <&vreg_s8c_1p3>;
+		vddrfa3-supply = <&vreg_s5a_1p9>;
+		vddpcie1-supply = <&vreg_s8c_1p3>;
+		vddpcie2-supply = <&vreg_s5a_1p9>;
+		vddio-supply = <&vreg_s4a_1p8>;
+		pinctrl-names = "default", "active";
+		pinctrl-0 = <&wlan_default_state &bt_default_state>;
+		pinctrl-1 = <&wlan_active_state &bt_active_state>;
+	};
+
 };
 
 &adsp {
@@ -620,9 +639,22 @@
 /* LS-I2C1 */
 &i2c15 {
 	status = "okay";
+
+	redriver@1c {
+		compatible = "onnn,nb7vpq904m";
+		reg = <0x1c>;
+
+		mode-switch;
+		port {
+		};
+	};
 };
 
 &mdss {
+	status = "okay";
+};
+
+&mdss_dp {
 	status = "okay";
 };
 
@@ -674,6 +706,9 @@
 	status = "okay";
 	vdda-phy-supply = <&vreg_l5a_0p88>;
 	vdda-pll-supply = <&vreg_l9a_1p2>;
+
+	/* Power on QCA639x chip, otherwise PCIe bus timeouts */
+	power-domains = <&qca639x>;
 };
 
 &pcie1 {
@@ -786,6 +821,35 @@
 	};
 };
 
+&pm8150b_typec {
+	status = "okay";
+	connector {
+		compatible = "usb-c-connector";
+		power-role = "dual";
+		data-role = "dual";
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@1 {
+				reg = <1>;
+				usb3_data_ss: endpoint@0 {
+					remote-endpoint = <&qmp_ss_mux>;
+				};
+			};
+		};
+	};
+
+	port {
+		usb3_role: endpoint {
+			remote-endpoint = <&dwc3_drd_switch>;
+		};
+	};
+};
+
+&pm8150b_vbus {
+	status = "okay";
+};
+
 &pm8150l_gpios {
 	gpio-line-names =
 		"NC",
@@ -809,6 +873,49 @@
 		input-disable;
 		power-source = <0>;
 	};
+};
+
+&pm8150l_lpg {
+	status = "okay";
+
+	led@1 {
+		reg = <1>;
+		label = "green:user0";
+
+		linux,default-trigger = "heartbeat";
+		default-state = "on";
+	};
+
+	led@2 {
+		reg = <2>;
+		label = "green:user1";
+		default-state = "on";
+	};
+
+	led@3 {
+		reg = <3>;
+		label = "green:user2";
+	};
+};
+
+&qup_uart6_default {
+       ctsrx {
+               pins = "gpio16", "gpio19";
+               drive-strength = <2>;
+               bias-disable;
+       };
+
+       rts {
+               pins = "gpio17";
+               drive-strength = <2>;
+               bias-disable;
+       };
+
+       tx {
+               pins = "gpio18";
+               drive-strength = <2>;
+               bias-pull-up;
+       };
 };
 
 &qupv3_id_0 {
@@ -862,6 +969,11 @@
 	bus-width = <4>;
 	no-sdio;
 	no-emmc;
+};
+
+&slpi {
+	/* status = "okay"; */
+	firmware-name = "qcom/sm8250/slpi.mbn";
 };
 
 &sound {
@@ -1167,6 +1279,28 @@
 		"HST_WLAN_UART_TX",
 		"HST_WLAN_UART_RX";
 
+	bt_default_state: bt-default-state {
+		bt-en {
+			pins = "gpio21";
+			function = "gpio";
+
+			drive-strength = <16>;
+			output-low;
+			bias-pull-up;
+		};
+	};
+
+	bt_active_state: bt-active-state {
+		bt-en {
+			pins = "gpio21";
+			function = "gpio";
+
+			drive-strength = <16>;
+			output-high;
+			bias-pull-up;
+		};
+	};
+
 	lt9611_irq_pin: lt9611-irq {
 		pins = "gpio63";
 		function = "gpio";
@@ -1273,6 +1407,37 @@
 		function = "gpio";
 		bias-pull-up;
 	};
+
+	wlan_default_state: wlan-default-state {
+		wlan-en {
+			pins = "gpio20";
+			function = "gpio";
+
+			drive-strength = <16>;
+			output-low;
+			bias-pull-up;
+		};
+	};
+
+	wlan_active_state: wlan-active-state {
+		wlan-en {
+			pins = "gpio20";
+			function = "gpio";
+
+			drive-strength = <16>;
+			output-high;
+			bias-pull-up;
+		};
+	};
+
+};
+
+&uart6 {
+	status = "okay";
+	bluetooth {
+		compatible = "qcom,qca6390-bt";
+		power-domains = <&qca639x>;
+	};
 };
 
 &uart12 {
@@ -1301,10 +1466,17 @@
 
 &usb_1 {
 	status = "okay";
+	usb-role-switch;
+	port {
+		dwc3_drd_switch: endpoint@0 {
+			remote-endpoint = <&usb3_role>;
+		};
+	};
 };
 
 &usb_1_dwc3 {
-	dr_mode = "peripheral";
+	dr_mode = "otg";
+	usb-role-switch;
 };
 
 &usb_1_hsphy {
@@ -1320,6 +1492,12 @@
 
 	vdda-phy-supply = <&vreg_l9a_1p2>;
 	vdda-pll-supply = <&vreg_l18a_0p92>;
+	orientation-switch;
+	port {
+		qmp_ss_mux: endpoint@0 {
+			remote-endpoint = <&usb3_data_ss>;
+		};
+	};
 };
 
 &usb_2 {
