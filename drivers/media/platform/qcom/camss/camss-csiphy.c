@@ -601,8 +601,10 @@ int msm_csiphy_subdev_init(struct camss *camss,
 		r = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						 res->reg[1]);
 		csiphy->base_clk_mux = devm_ioremap_resource(dev, r);
-		if (IS_ERR(csiphy->base_clk_mux))
+		if (IS_ERR(csiphy->base_clk_mux)) {
+			dev_err(dev, "could not map memory\n");
 			return PTR_ERR(csiphy->base_clk_mux);
+		}
 	} else {
 		csiphy->base_clk_mux = NULL;
 	}
