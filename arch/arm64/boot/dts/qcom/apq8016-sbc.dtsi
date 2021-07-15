@@ -301,6 +301,10 @@
 	status = "okay";
 };
 
+&mdss {
+	status = "okay";
+};
+
 &mpss {
 	status = "okay";
 	firmware-name = "qcom/msm8916/mba.mbn", "qcom/msm8916/modem.mdt";
