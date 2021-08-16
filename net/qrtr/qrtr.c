@@ -97,7 +97,7 @@ static inline struct qrtr_sock *qrtr_sk(struct sock *sk)
 	return container_of(sk, struct qrtr_sock, sk);
 }
 
-static unsigned int qrtr_local_nid = 1;
+static unsigned int qrtr_local_nid = 2;
 
 /* for node ids */
 static RADIX_TREE(qrtr_nodes, GFP_ATOMIC);
@@ -132,6 +132,11 @@ struct qrtr_node {
 
 	struct sk_buff_head rx_queue;
 	struct list_head item;
+	struct work_struct say_hello;
+	struct workqueue_struct *wq;
+	struct task_struct *task;
+
+	atomic_t hello_sent;
 };
 
 /**
@@ -343,6 +348,15 @@ static int qrtr_node_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 	size_t len = skb->len;
 	int rc, confirm_rx;
 
+	if (!atomic_read(&node->hello_sent) && type != QRTR_TYPE_HELLO) {
+		kfree_skb(skb);
+		return rc;
+	}
+	if (atomic_read(&node->hello_sent) && type == QRTR_TYPE_HELLO) {
+		kfree_skb(skb);
+		return 0;
+	}
+
 	confirm_rx = qrtr_tx_wait(node, to->sq_node, to->sq_port, type);
 	if (confirm_rx < 0) {
 		kfree_skb(skb);
@@ -376,6 +390,10 @@ static int qrtr_node_enqueue(struct qrtr_node *node, struct sk_buff *skb,
 			kfree_skb(skb);
 		mutex_unlock(&node->ep_lock);
 	}
+
+	if (!rc && type == QRTR_TYPE_HELLO)
+		atomic_inc(&node->hello_sent);
+
 	/* Need to ensure that a subsequent message carries the otherwise lost
 	 * confirm_rx flag if we dropped this one */
 	if (rc && confirm_rx)
@@ -436,7 +454,7 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	struct qrtr_sock *ipc;
 	struct sk_buff *skb;
 	struct qrtr_cb *cb;
-	size_t size;
+	unsigned int size;
 	unsigned int ver;
 	size_t hdrlen;
 
@@ -565,6 +583,33 @@ static struct sk_buff *qrtr_alloc_ctrl_packet(struct qrtr_ctrl_pkt **pkt,
 	return skb;
 }
 
+static void qrtr_hello_work(struct work_struct *work)
+{
+	struct sockaddr_qrtr from = {AF_QIPCRTR, 0, QRTR_PORT_CTRL};
+	struct sockaddr_qrtr to = {AF_QIPCRTR, 0, QRTR_PORT_CTRL};
+	struct qrtr_ctrl_pkt *pkt;
+	struct qrtr_node *node;
+	struct qrtr_sock *ctrl;
+	struct sk_buff *skb;
+
+	ctrl = qrtr_port_lookup(QRTR_PORT_CTRL);
+	if (!ctrl)
+		return;
+
+	skb = qrtr_alloc_ctrl_packet(&pkt, GFP_KERNEL);
+	if (!skb) {
+		qrtr_port_put(ctrl);
+		return;
+	}
+
+	node = container_of(work, struct qrtr_node, say_hello);
+	pkt->cmd = cpu_to_le32(QRTR_TYPE_HELLO);
+	from.sq_node = qrtr_local_nid;
+
+	qrtr_node_enqueue(node, skb, QRTR_TYPE_HELLO, &from, &to);
+	qrtr_port_put(ctrl);
+}
+
 /**
  * qrtr_endpoint_register() - register a new endpoint
  * @ep: endpoint to register
@@ -590,15 +635,23 @@ int qrtr_endpoint_register(struct qrtr_endpoint *ep, unsigned int nid)
 	node->nid = QRTR_EP_NID_AUTO;
 	node->ep = ep;
 
+	INIT_WORK(&node->say_hello, qrtr_hello_work);
+	node->wq = alloc_ordered_workqueue("qrtr_wq", 0);
+	if (!node->wq)
+		return -ENOMEM;
+
 	INIT_RADIX_TREE(&node->qrtr_tx_flow, GFP_KERNEL);
 	mutex_init(&node->qrtr_tx_lock);
 
+	atomic_set(&node->hello_sent, 0);
 	qrtr_node_assign(node, nid);
 
 	mutex_lock(&qrtr_node_lock);
 	list_add(&node->item, &qrtr_all_nodes);
 	mutex_unlock(&qrtr_node_lock);
 	ep->node = node;
+
+	queue_work(node->wq, &node->say_hello);
 
 	return 0;
 }
@@ -757,7 +810,7 @@ static void qrtr_reset_ports(void)
 	xa_for_each_start(&qrtr_ports, index, ipc, 1) {
 		sock_hold(&ipc->sk);
 		ipc->sk.sk_err = ENETRESET;
-		sk_error_report(&ipc->sk);
+		ipc->sk.sk_error_report(&ipc->sk);
 		sock_put(&ipc->sk);
 	}
 	rcu_read_unlock();
@@ -794,6 +847,17 @@ static int __qrtr_bind(struct socket *sock,
 	/* Notify all open ports about the new controller */
 	if (port == QRTR_PORT_CTRL)
 		qrtr_reset_ports();
+
+	if (port == QRTR_PORT_CTRL) {
+		struct radix_tree_iter iter;
+		struct qrtr_node *node;
+		void __rcu **slot;
+
+		radix_tree_for_each_slot(slot, &qrtr_nodes, &iter, 0) {
+			node = *slot;
+			atomic_set(&node->hello_sent, 0);
+		}
+	}
 
 	return 0;
 }
