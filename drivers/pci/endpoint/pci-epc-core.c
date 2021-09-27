@@ -698,6 +698,23 @@ void pci_epc_linkup(struct pci_epc *epc)
 EXPORT_SYMBOL_GPL(pci_epc_linkup);
 
 /**
+ * pci_epc_linkdown() - Notify the EPF device that EPC device has dropped the
+ *			connection with the Root Complex.
+ * @epc: the EPC device which has dropped the link with the host
+ *
+ * Invoke to Notify the EPF device that the EPC device has dropped the
+ * connection with the Root Complex.
+ */
+void pci_epc_linkdown(struct pci_epc *epc)
+{
+	if (!epc || IS_ERR(epc))
+		return;
+
+	atomic_notifier_call_chain(&epc->notifier, LINK_DOWN, NULL);
+}
+EXPORT_SYMBOL_GPL(pci_epc_linkdown);
+
+/**
  * pci_epc_init_notify() - Notify the EPF device that EPC device's core
  *			   initialization is completed.
  * @epc: the EPC device whose core initialization is completeds
@@ -713,6 +730,78 @@ void pci_epc_init_notify(struct pci_epc *epc)
 	atomic_notifier_call_chain(&epc->notifier, CORE_INIT, NULL);
 }
 EXPORT_SYMBOL_GPL(pci_epc_init_notify);
+
+/**
+ * pci_epc_bme_notify() - Notify the EPF device that the EPC device has received
+ *			  the BME event from the Root complex
+ * @epc: the EPC device that received the BME event
+ *
+ * Invoke to Notify the EPF device that the EPC device has received the Bus
+ * Master Enable (BME) event from the Root complex
+ */
+void pci_epc_bme_notify(struct pci_epc *epc)
+{
+	if (!epc || IS_ERR(epc))
+		return;
+
+	atomic_notifier_call_chain(&epc->notifier, BME, NULL);
+}
+EXPORT_SYMBOL_GPL(pci_epc_bme_notify);
+
+/**
+ * pci_epc_pme_notify() - Notify the EPF device that the EPC device has received
+ *			  the PME from the Root complex
+ * @epc: the EPC device that received the PME
+ * @data: Data for the PME notifier
+ *
+ * Invoke to Notify the EPF device that the EPC device has received the Power
+ * Management Event (PME) from the Root complex
+ */
+void pci_epc_pme_notify(struct pci_epc *epc, void *data)
+{
+	if (!epc || IS_ERR(epc))
+		return;
+
+	atomic_notifier_call_chain(&epc->notifier, PME, data);
+}
+EXPORT_SYMBOL_GPL(pci_epc_pme_notify);
+
+/**
+ * pci_epc_d_state_notify() - Notify the EPF device that the EPC device has
+ *			      received the Device State event from Root complex
+ * @epc: the EPC device that received the Device State event
+ * @data: Data for the D_STATE notifier
+ *
+ * Invoke to notify the EPF device that the EPC device has received the Device
+ * State (D_STATE) event from the Root complex
+ */
+void pci_epc_d_state_notify(struct pci_epc *epc, void *data)
+{
+	if (!epc || IS_ERR(epc))
+		return;
+
+	atomic_notifier_call_chain(&epc->notifier, D_STATE, data);
+}
+EXPORT_SYMBOL_GPL(pci_epc_d_state_notify);
+
+/**
+ * pci_epc_custom_notify() - Notify the EPF device that the EPC device has
+ *			     received the custom events from the Root complex
+ * @epc: EPC device that received the custom event
+ * @data: Data for the CUSTOM notifier
+ *
+ * Invoke to notify the EPF device that the EPC device has received the Custom
+ * event from the Root complex. The custom event is EPC/vendor specific and is
+ * shared with the EPF device.
+ */
+void pci_epc_custom_notify(struct pci_epc *epc, void *data)
+{
+	if (!epc || IS_ERR(epc))
+		return;
+
+	atomic_notifier_call_chain(&epc->notifier, CUSTOM, data);
+}
+EXPORT_SYMBOL_GPL(pci_epc_custom_notify);
 
 /**
  * pci_epc_destroy() - destroy the EPC device

@@ -25,3 +25,12 @@ config PCI_EPF_NTB
 	  device tree.
 
 	  If in doubt, say "N" to disable Endpoint NTB driver.
+
+config PCI_EPF_MHI
+	tristate "PCI Endpoint controller driver for MHI bus"
+	depends on PCI_ENDPOINT && MHI_BUS_EP
+	help
+	   Enable this configuration option to enable the PCI Endpoint
+	   driver for MHI device.
+
+	   If in doubt, say "N" to disable Endpoint driver for MHI device.
