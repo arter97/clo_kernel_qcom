@@ -86,6 +86,7 @@ struct lt9611uxc_mode {
 	u16 hdisplay;
 	u16 vdisplay;
 	u8 vrefresh;
+	bool dual_dsi;
 };
 
 /*
@@ -93,22 +94,24 @@ struct lt9611uxc_mode {
  * Enumerate them here to check whether the mode is supported.
  */
 static struct lt9611uxc_mode lt9611uxc_modes[] = {
-	{ 1920, 1080, 60 },
-	{ 1920, 1080, 30 },
-	{ 1920, 1080, 25 },
-	{ 1366, 768, 60 },
-	{ 1360, 768, 60 },
-	{ 1280, 1024, 60 },
-	{ 1280, 800, 60 },
-	{ 1280, 720, 60 },
-	{ 1280, 720, 50 },
-	{ 1280, 720, 30 },
-	{ 1152, 864, 60 },
-	{ 1024, 768, 60 },
-	{ 800, 600, 60 },
-	{ 720, 576, 50 },
-	{ 720, 480, 60 },
-	{ 640, 480, 60 },
+	{ 3840, 2160, 60, true },
+	{ 3840, 2160, 30, true },
+	{ 1920, 1080, 60, false },
+	{ 1920, 1080, 30, false },
+	{ 1920, 1080, 25, false },
+	{ 1366, 768, 60, false },
+	{ 1360, 768, 60, false },
+	{ 1280, 1024, 60, false },
+	{ 1280, 800, 60, false },
+	{ 1280, 720, 60, false },
+	{ 1280, 720, 50, false },
+	{ 1280, 720, 30, false },
+	{ 1152, 864, 60, false },
+	{ 1024, 768, 60, false },
+	{ 800, 600, 60, false },
+	{ 720, 576, 50, false },
+	{ 720, 480, 60, false },
+	{ 640, 480, 60, false },
 };
 
 static struct lt9611uxc *bridge_to_lt9611uxc(struct drm_bridge *bridge)
@@ -167,9 +170,10 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 	struct lt9611uxc *lt9611uxc = container_of(work, struct lt9611uxc, work);
 	bool connected;
 
-	if (lt9611uxc->connector.dev)
-		drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
-	else {
+	if (lt9611uxc->connector.dev) {
+		if (lt9611uxc->connector.dev->mode_config.funcs)
+			drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
+	} else {
 
 		mutex_lock(&lt9611uxc->ocm_lock);
 		connected = lt9611uxc->hdmi_connected;
@@ -312,8 +316,15 @@ static enum drm_mode_status lt9611uxc_connector_mode_valid(struct drm_connector 
 							   struct drm_display_mode *mode)
 {
 	struct lt9611uxc_mode *lt9611uxc_mode = lt9611uxc_find_mode(mode);
+	struct lt9611uxc *lt9611uxc = connector_to_lt9611uxc(connector);
 
-	return lt9611uxc_mode ? MODE_OK : MODE_BAD;
+	if (!lt9611uxc_mode)
+		return MODE_BAD;
+
+	if (lt9611uxc_mode->dual_dsi && (!lt9611uxc->dsi0 || !lt9611uxc->dsi1))
+		return MODE_BAD;
+
+	return MODE_OK;
 }
 
 static const struct drm_connector_helper_funcs lt9611uxc_bridge_connector_helper_funcs = {
@@ -338,6 +349,8 @@ static int lt9611uxc_connector_init(struct drm_bridge *bridge, struct lt9611uxc 
 		DRM_ERROR("Parent encoder object not found");
 		return -ENODEV;
 	}
+
+	lt9611uxc->connector.polled = DRM_CONNECTOR_POLL_HPD;
 
 	drm_connector_helper_add(&lt9611uxc->connector,
 				 &lt9611uxc_bridge_connector_helper_funcs);
@@ -378,9 +391,11 @@ static int lt9611uxc_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	/* Attach primary DSI */
-	lt9611uxc->dsi0 = lt9611uxc_attach_dsi(lt9611uxc, lt9611uxc->dsi0_node);
-	if (IS_ERR(lt9611uxc->dsi0))
-		return PTR_ERR(lt9611uxc->dsi0);
+	if (lt9611uxc->dsi0_node) {
+		lt9611uxc->dsi0 = lt9611uxc_attach_dsi(lt9611uxc, lt9611uxc->dsi0_node);
+		if (IS_ERR(lt9611uxc->dsi0))
+			return PTR_ERR(lt9611uxc->dsi0);
+	}
 
 	/* Attach secondary DSI, if specified */
 	if (lt9611uxc->dsi1_node) {
@@ -394,8 +409,10 @@ static int lt9611uxc_bridge_attach(struct drm_bridge *bridge,
 	return 0;
 
 err_unregister_dsi0:
-	mipi_dsi_detach(lt9611uxc->dsi0);
-	mipi_dsi_device_unregister(lt9611uxc->dsi0);
+	if (lt9611uxc->dsi0) {
+		mipi_dsi_detach(lt9611uxc->dsi0);
+		mipi_dsi_device_unregister(lt9611uxc->dsi0);
+	}
 
 	return ret;
 }
@@ -405,11 +422,16 @@ lt9611uxc_bridge_mode_valid(struct drm_bridge *bridge,
 			    const struct drm_display_info *info,
 			    const struct drm_display_mode *mode)
 {
-	struct lt9611uxc_mode *lt9611uxc_mode;
+	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
+	struct lt9611uxc_mode *lt9611uxc_mode = lt9611uxc_find_mode(mode);
 
-	lt9611uxc_mode = lt9611uxc_find_mode(mode);
+	if (!lt9611uxc_mode)
+		return MODE_BAD;
 
-	return lt9611uxc_mode ? MODE_OK : MODE_BAD;
+	if (lt9611uxc_mode->dual_dsi && (!lt9611uxc->dsi0 || !lt9611uxc->dsi1))
+		return MODE_BAD;
+
+	return MODE_OK;
 }
 
 static void lt9611uxc_video_setup(struct lt9611uxc *lt9611uxc,
@@ -428,6 +450,13 @@ static void lt9611uxc_video_setup(struct lt9611uxc *lt9611uxc,
 	vactive = mode->vdisplay;
 	vsync_len = mode->vsync_end - mode->vsync_start;
 	vfront_porch = mode->vsync_start - mode->vdisplay;
+
+	if (lt9611uxc->dsi0 && lt9611uxc->dsi1)
+		regmap_write(lt9611uxc->regmap, 0xb025, 0x03);
+	else if (lt9611uxc->dsi0)
+		regmap_write(lt9611uxc->regmap, 0xb025, 0x01);
+	else
+		regmap_write(lt9611uxc->regmap, 0xb025, 0x02);
 
 	regmap_write(lt9611uxc->regmap, 0xd00d, (u8)(v_total / 256));
 	regmap_write(lt9611uxc->regmap, 0xd00e, (u8)(v_total % 256));
@@ -552,12 +581,13 @@ static int lt9611uxc_parse_dt(struct device *dev,
 			      struct lt9611uxc *lt9611uxc)
 {
 	lt9611uxc->dsi0_node = of_graph_get_remote_node(dev->of_node, 0, -1);
-	if (!lt9611uxc->dsi0_node) {
+	lt9611uxc->dsi1_node = of_graph_get_remote_node(dev->of_node, 1, -1);
+
+	if (!lt9611uxc->dsi0_node && !lt9611uxc->dsi1_node) {
 		dev_err(lt9611uxc->dev, "failed to get remote node for primary dsi\n");
 		return -ENODEV;
 	}
 
-	lt9611uxc->dsi1_node = of_graph_get_remote_node(dev->of_node, 1, -1);
 
 	return 0;
 }

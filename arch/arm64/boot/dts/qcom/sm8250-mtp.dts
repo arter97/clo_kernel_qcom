@@ -6,6 +6,9 @@
 /dts-v1/;
 
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/sound/qcom,q6afe.h>
+#include <dt-bindings/sound/qcom,q6asm.h>
+#include <dt-bindings/gpio/gpio.h>
 #include "sm8250.dtsi"
 #include "pm8150.dtsi"
 #include "pm8150b.dtsi"
@@ -153,6 +156,20 @@
 		regulator-always-on;
 		vin-supply = <&vph_pwr>;
 	};
+
+	display_panel_avdd: display_gpio_regulator@1 {
+		compatible = "regulator-fixed";
+		regulator-name = "display_panel_avdd";
+		regulator-min-microvolt = <5500000>;
+		regulator-max-microvolt = <5500000>;
+		regulator-enable-ramp-delay = <233>;
+		gpio = <&tlmm 61 0>;
+		enable-active-high;
+		regulator-boot-on;
+		pinctrl-names = "default";
+		pinctrl-0 = <&display_panel_avdd_default>;
+	};
+
 };
 
 &adsp {
@@ -465,6 +482,47 @@
 	firmware-name = "qcom/sm8250/cdsp.mbn";
 };
 
+&dsi0 {
+	status = "okay";
+	vdda-supply = <&vreg_l9a_1p2>;
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	ports {
+		port@1 {
+			endpoint {
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
+};
+
+&dsi0_phy {
+	status = "okay";
+	vdds-supply = <&vreg_l5a_0p875>;
+};
+
+#if 0
+&dsi1 {
+	status = "okay";
+	vdda-supply = <&vreg_l9a_1p2>;
+
+	ports {
+		port@1 {
+			endpoint {
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
+};
+
+&dsi1_phy {
+	status = "okay";
+	vdds-supply = <&vreg_l5a_0p875>;
+};
+#endif
+
 &gmu {
 	status = "okay";
 };
@@ -496,6 +554,14 @@
 
 	/* smb1390 @ 10 */
 	/* rtc6226 @ 64 */
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_mdp {
+	status = "okay";
 };
 
 &pm8150_adc {
@@ -626,6 +692,21 @@
 
 &tlmm {
 	gpio-reserved-ranges = <28 4>, <40 4>;
+
+	display_panel_avdd_default: display_panel_avdd_default {
+                mux {
+                        pins = "gpio61";
+                        function = "gpio";
+                };
+
+                config {
+                        pins = "gpio61";
+                        drive-strength = <8>;
+                        bias-disable = <0>;
+                        output-high;
+                };
+        };
+
 };
 
 &uart12 {
@@ -696,6 +777,63 @@
 
 	vdda-phy-supply = <&vreg_l9a_1p2>;
 	vdda-pll-supply = <&vreg_l18a_0p9>;
+};
+
+&swr0 {
+	left_right: wsa8810-right{
+		compatible = "sdw10217211000";
+		reg = <0 2>;
+		powerdown-gpios = <&tlmm 127 GPIO_ACTIVE_HIGH>;
+		#thermal-sensor-cells = <0>;
+		sound-name-prefix = "SpkrRight";
+		#sound-dai-cells = <0>;
+	};
+
+	left_spkr: wsa8810-left{
+		compatible = "sdw10217211000";
+		reg = <0 1>;
+		powerdown-gpios = <&tlmm 26 GPIO_ACTIVE_HIGH>;
+		#thermal-sensor-cells = <0>;
+		sound-name-prefix = "SpkrLeft";
+		#sound-dai-cells = <0>;
+	};
+};
+
+&q6asmdai {
+	dai@0 {
+		reg = <0>;
+		direction = <2>;
+	};
+};
+
+&sound {
+	compatible = "qcom,sm8250-sndcard";
+	model = "SM8250";
+	audio-routing =
+		"SpkrLeft IN", "WSA_SPK1 OUT",
+		"MM_DL1",  "MultiMedia1 Playback";
+
+	mm1-dai-link {
+		link-name = "MultiMedia1";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+		};
+	};
+
+	dma-dai-link {
+		link-name = "WSA Playback";
+		cpu {
+			sound-dai = <&q6afedai WSA_CODEC_DMA_RX_0>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&left_spkr>, <&swr0 0>, <&wsamacro 0>;
+		};
+	};
 };
 
 &venus {

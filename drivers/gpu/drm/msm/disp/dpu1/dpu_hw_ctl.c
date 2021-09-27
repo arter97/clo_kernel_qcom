@@ -497,6 +497,7 @@ static void dpu_hw_ctl_intf_cfg_v1(struct dpu_hw_ctl *ctx,
 	struct dpu_hw_blk_reg_map *c = &ctx->hw;
 	u32 intf_active = 0;
 	u32 mode_sel = 0;
+	u32 merge_3d_active = 0;
 
 	if (cfg->intf_mode_sel == DPU_CTL_MODE_SEL_CMD)
 		mode_sel |= BIT(17);
@@ -504,11 +505,21 @@ static void dpu_hw_ctl_intf_cfg_v1(struct dpu_hw_ctl *ctx,
 	intf_active = DPU_REG_READ(c, CTL_INTF_ACTIVE);
 	intf_active |= BIT(cfg->intf - INTF_0);
 
+	merge_3d_active = DPU_REG_READ(c, CTL_MERGE_3D_ACTIVE);
+	if (cfg->merge_3d)
+		merge_3d_active |= BIT(cfg->merge_3d - MERGE_3D_0);
+
 	DPU_REG_WRITE(c, CTL_TOP, mode_sel);
 	DPU_REG_WRITE(c, CTL_INTF_ACTIVE, intf_active);
+	if (cfg->intf_master)
+		DPU_REG_WRITE(c, CTL_INTF_MASTER, BIT(cfg->intf_master - INTF_0));
 	if (cfg->merge_3d)
-		DPU_REG_WRITE(c, CTL_MERGE_3D_ACTIVE,
-			      BIT(cfg->merge_3d - MERGE_3D_0));
+		DPU_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, merge_3d_active);
+
+	if (cfg->intf_master)
+		DPU_ERROR("ACTIVE: %x %x %lx\n", intf_active, merge_3d_active, BIT(cfg->intf_master - INTF_0));
+	else
+		DPU_ERROR("ACTIVE: %x %x\n", intf_active, merge_3d_active);
 }
 
 static void dpu_hw_ctl_intf_cfg(struct dpu_hw_ctl *ctx,
