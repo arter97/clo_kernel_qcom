@@ -655,6 +655,9 @@ static int wcnss_remove(struct platform_device *pdev)
 
 	qcom_iris_remove(wcnss->iris);
 
+	if (wcnss->state)
+		qcom_smem_state_put(wcnss->state);
+
 	rproc_del(wcnss->rproc);
 
 	qcom_remove_sysmon_subdev(wcnss->sysmon);
