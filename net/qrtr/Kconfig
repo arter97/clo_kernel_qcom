@@ -35,11 +35,4 @@ config QRTR_MHI
 	  Say Y here to support MHI based ipcrouter channels. MHI is the
 	  transport used for communicating to external modems.
 
-config QRTR_MHI_EP
-	tristate "MHI Endpoint IPC Router channels"
-	depends on MHI_BUS_EP
-	help
-	  Say Y here to support MHI Endpoint based ipcrouter channels. MHI is
-	  the transport used for communicating to external modems.
-
 endif # QRTR
