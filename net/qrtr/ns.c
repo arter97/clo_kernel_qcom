@@ -189,11 +189,9 @@ static void lookup_notify(struct sockaddr_qrtr *to, struct qrtr_server *srv,
 
 static int announce_servers(struct sockaddr_qrtr *sq)
 {
-	struct radix_tree_iter node_iter;
 	struct radix_tree_iter iter;
 	struct qrtr_server *srv;
 	struct qrtr_node *node;
-	void __rcu **node_slot;
 	void __rcu **slot;
 	int ret;
 
@@ -202,37 +200,25 @@ static int announce_servers(struct sockaddr_qrtr *sq)
 		return 0;
 
 	rcu_read_lock();
-
-	/* Iterate through all neighbor nodes */
-	radix_tree_for_each_slot(node_slot, &nodes, &node_iter, 0) {
-		node = radix_tree_deref_slot(node_slot);
-		if (!node)
+	/* Announce the list of servers registered in this node */
+	radix_tree_for_each_slot(slot, &node->servers, &iter, 0) {
+		srv = radix_tree_deref_slot(slot);
+		if (!srv)
 			continue;
-		if (radix_tree_deref_retry(node)) {
-			node_slot = radix_tree_iter_retry(&node_iter);
+		if (radix_tree_deref_retry(srv)) {
+			slot = radix_tree_iter_retry(&iter);
 			continue;
 		}
-		node_slot = radix_tree_iter_resume(node_slot, &node_iter);
+		slot = radix_tree_iter_resume(slot, &iter);
+		rcu_read_unlock();
 
-		/* Announce the list of servers registered in this node */
-		radix_tree_for_each_slot(slot, &node->servers, &iter, 0) {
-			srv = radix_tree_deref_slot(slot);
-			if (!srv)
-				continue;
-			if (radix_tree_deref_retry(srv)) {
-				slot = radix_tree_iter_retry(&iter);
-				continue;
-			}
-			slot = radix_tree_iter_resume(slot, &iter);
-
-			rcu_read_unlock();
-			ret = service_announce_new(sq, srv);
-			if (ret < 0) {
-				pr_err("failed to announce new service\n");
-				return ret;
-			}
-			rcu_read_lock();
+		ret = service_announce_new(sq, srv);
+		if (ret < 0) {
+			pr_err("failed to announce new service\n");
+			return ret;
 		}
+
+		rcu_read_lock();
 	}
 
 	rcu_read_unlock();
