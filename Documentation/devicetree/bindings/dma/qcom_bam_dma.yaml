@@ -73,6 +73,12 @@ properties:
       Indicates that the bam is controlled by remote proccessor i.e.
       execution environment.
 
+  qcom,powered-remotely:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description:
+      Indicates that the bam is powered up by a remote processor
+      but must be initialized by the local processor.
+
   qcom,num-ees:
     $ref: /schemas/types.yaml#/definitions/uint32
     minimum: 0
