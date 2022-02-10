@@ -88,6 +88,13 @@ config AQUANTIA_PHY
 	help
 	  Currently supports the Aquantia AQ1202, AQ2104, AQR105, AQR405
 
+config AQUANTIA_MACSEC
+	tristate "Aquantia PHYs MACSEC HW offload"
+	depends on MACSEC
+	depends on AQUANTIA_PHY
+	help
+	  Currently supports the Aquantia AQR111, AQR112, AQR113
+
 config AX88796B_PHY
 	tristate "Asix PHYs"
 	help
