@@ -121,4 +121,7 @@ extern int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size, phys_addr
 extern int qcom_scm_invoke_callback_response(phys_addr_t out_buf, size_t out_buf_size,
 					     int *result, u64 *response_type,
 					     unsigned int *data);
+
+extern int qcom_scm_tsens_reinit(int *tsens_ret);
+
 #endif
