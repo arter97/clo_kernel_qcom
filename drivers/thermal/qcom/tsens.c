@@ -988,6 +988,9 @@ static const struct of_device_id tsens_table[] = {
 		.compatible = "qcom,msm8996-tsens",
 		.data = &data_8996,
 	}, {
+		.compatible = "qcom,sm8150-tsens",
+		.data = &data_tsens_sm8150,
+	}, {
 		.compatible = "qcom,tsens-v1",
 		.data = &data_tsens_v1,
 	}, {
@@ -1127,6 +1130,7 @@ static int tsens_probe(struct platform_device *pdev)
 
 	priv->dev = dev;
 	priv->num_sensors = num_sensors;
+	priv->needs_reinit_wa = data->needs_reinit_wa;
 	priv->ops = data->ops;
 	for (i = 0;  i < priv->num_sensors; i++) {
 		if (data->hw_ids)

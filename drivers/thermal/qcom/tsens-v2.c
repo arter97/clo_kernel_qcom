@@ -101,6 +101,17 @@ struct tsens_plat_data data_tsens_v2 = {
 	.fields	= tsens_v2_regfields,
 };
 
+/* For sm8150 tsens, its suggested to monitor the controller health
+ * periodically and in case an issue is detected to reinit tsens
+ * controller via trustzone.
+ */
+struct tsens_plat_data data_tsens_sm8150 = {
+	.ops		= &ops_generic_v2,
+	.feat		= &tsens_v2_feat,
+	.needs_reinit_wa = true,
+	.fields	= tsens_v2_regfields,
+};
+
 /* Kept around for backward compatibility with old msm8996.dtsi */
 struct tsens_plat_data data_8996 = {
 	.num_sensors	= 13,
