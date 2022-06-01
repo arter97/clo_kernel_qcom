@@ -14,6 +14,7 @@
 #define SLOPE_FACTOR		1000
 #define SLOPE_DEFAULT		3200
 #define TIMEOUT_US		100
+#define RESET_TIMEOUT_MS	2
 #define THRESHOLD_MAX_ADC_CODE	0x3ff
 #define THRESHOLD_MIN_ADC_CODE	0x0
 
@@ -167,6 +168,7 @@ enum regfield_ids {
 	/* ----- TM ------ */
 	/* TRDY */
 	TRDY,
+	FIRST_ROUND_COMPLETE,
 	/* INTERRUPT ENABLE */
 	INT_EN,	/* v2+ has separate enables for crit, upper and lower irq */
 	/* STATUS */
@@ -565,6 +567,10 @@ struct tsens_priv {
 	struct regmap			*srot_map;
 	u32				tm_offset;
 	bool				needs_reinit_wa;
+	struct workqueue_struct		*reinit_wa_worker;
+	struct work_struct		reinit_wa_notify;
+
+	struct list_head		list;
 
 	/* lock for upper/lower threshold interrupts */
 	spinlock_t			ul_lock;

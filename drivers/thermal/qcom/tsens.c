@@ -7,6 +7,7 @@
 #include <linux/debugfs.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/qcom_scm.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of.h>
@@ -19,6 +20,8 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include "tsens.h"
+
+LIST_HEAD(tsens_device_list);
 
 /**
  * struct tsens_irq_data - IRQ status and temperature violations
@@ -593,19 +596,159 @@ static void tsens_disable_irq(struct tsens_priv *priv)
 	regmap_field_write(priv->rf[INT_EN], 0);
 }
 
+static int tsens_reenable_hw_after_scm(struct tsens_priv *priv)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->ul_lock, flags);
+
+	/* Re-enable watchdog, unmask the bark and
+	 * disable cycle completion monitoring.
+	 */
+	regmap_field_write(priv->rf[WDOG_BARK_CLEAR], 1);
+	regmap_field_write(priv->rf[WDOG_BARK_CLEAR], 0);
+	regmap_field_write(priv->rf[WDOG_BARK_MASK], 0);
+	regmap_field_write(priv->rf[CC_MON_MASK], 1);
+
+	/* Re-enable interrupts */
+	tsens_enable_irq(priv);
+
+	spin_unlock_irqrestore(&priv->ul_lock, flags);
+
+	return 0;
+}
+
 int get_temp_tsens_valid(const struct tsens_sensor *s, int *temp)
 {
-	struct tsens_priv *priv = s->priv;
+	struct tsens_priv *priv = s->priv, *priv_reinit;
 	int hw_id = s->hw_id;
 	u32 temp_idx = LAST_TEMP_0 + hw_id;
 	u32 valid_idx = VALID_0 + hw_id;
 	u32 valid;
-	int ret;
+	int ret, trdy, first_round, tsens_ret, sw_reg;
+	unsigned long timeout;
+	static atomic_t in_tsens_reinit;
 
 	/* VER_0 doesn't have VALID bit */
 	if (tsens_version(priv) == VER_0)
 		goto get_temp;
 
+	/* For some tsens controllers, its suggested to
+	 * monitor the controller health periodically
+	 * and in case an issue is detected to reinit
+	 * tsens controller via trustzone.
+	 */
+	if (priv->needs_reinit_wa) {
+		/* First check if TRDY is SET */
+		timeout = jiffies + usecs_to_jiffies(TIMEOUT_US);
+		do {
+			ret = regmap_field_read(priv->rf[TRDY], &trdy);
+			if (ret)
+				goto err;
+			if (!trdy)
+				continue;
+		} while (time_before(jiffies, timeout));
+
+		if (!trdy) {
+			ret = regmap_field_read(priv->rf[FIRST_ROUND_COMPLETE], &first_round);
+			if (ret)
+				goto err;
+
+			if (!first_round) {
+				if (atomic_read(&in_tsens_reinit)) {
+					dev_dbg(priv->dev, "tsens re-init is in progress\n");
+					ret = -EAGAIN;
+					goto err;
+				}
+
+				/* Wait for 2 ms for tsens controller to recover */
+				timeout = jiffies + msecs_to_jiffies(RESET_TIMEOUT_MS);
+				do {
+					ret = regmap_field_read(priv->rf[FIRST_ROUND_COMPLETE],
+								&first_round);
+					if (ret)
+						goto err;
+
+					if (first_round) {
+						dev_dbg(priv->dev, "tsens controller recovered\n");
+						goto sensor_read;
+					}
+				} while (time_before(jiffies, timeout));
+
+				/*
+				 * tsens controller did not recover,
+				 * proceed with SCM call to re-init it
+				 */
+				if (atomic_read(&in_tsens_reinit)) {
+					dev_dbg(priv->dev, "tsens re-init is in progress\n");
+					ret = -EAGAIN;
+					goto err;
+				}
+
+				atomic_set(&in_tsens_reinit, 1);
+
+				/*
+				 * Invoke scm call only if SW register write is
+				 * reflecting in controller. Try it for 2 ms.
+				 */
+				timeout = jiffies + msecs_to_jiffies(RESET_TIMEOUT_MS);
+				do {
+					ret = regmap_field_write(priv->rf[INT_EN], BIT(2));
+					if (ret)
+						goto err_unset;
+
+					ret = regmap_field_read(priv->rf[INT_EN], &sw_reg);
+					if (ret)
+						goto err_unset;
+
+					if (!(sw_reg & BIT(2)))
+						continue;
+				} while (time_before(jiffies, timeout));
+
+				if (!(sw_reg & BIT(2))) {
+					ret = -ENOTRECOVERABLE;
+					goto err_unset;
+				}
+
+				ret = qcom_scm_tsens_reinit(&tsens_ret);
+				if (ret || tsens_ret) {
+					dev_err(priv->dev, "tsens reinit scm call failed (%d : %d)\n",
+							ret, tsens_ret);
+					if (tsens_ret)
+						ret = -ENOTRECOVERABLE;
+
+					goto err_unset;
+				}
+
+				/* After the SCM call, we need to re-enable
+				 * the interrupts and also set active threshold
+				 * for each sensor.
+				 */
+				list_for_each_entry(priv_reinit,
+						&tsens_device_list, list) {
+					ret = tsens_reenable_hw_after_scm(priv_reinit);
+					if (ret) {
+						dev_err(priv->dev,
+							"tsens re-enable after scm call failed (%d)\n",
+							ret);
+						ret = -ENOTRECOVERABLE;
+						goto err_unset;
+					}
+				}
+
+				atomic_set(&in_tsens_reinit, 0);
+
+				/* Notify reinit wa worker */
+				list_for_each_entry(priv_reinit,
+						&tsens_device_list, list) {
+					queue_work(priv_reinit->reinit_wa_worker,
+							&priv_reinit->reinit_wa_notify);
+				}
+			}
+		}
+	}
+
+sensor_read:
 	/* Valid bit is 0 for 6 AHB clock cycles.
 	 * At 19.2MHz, 1 AHB clock is ~60ns.
 	 * We should enter this loop very, very rarely.
@@ -622,6 +765,12 @@ get_temp:
 	*temp = tsens_hw_to_mC(s, temp_idx);
 
 	return 0;
+
+err_unset:
+	atomic_set(&in_tsens_reinit, 0);
+
+err:
+	return ret;
 }
 
 int get_temp_common(const struct tsens_sensor *s, int *temp)
@@ -859,6 +1008,14 @@ int __init init_common(struct tsens_priv *priv)
 		goto err_put_device;
 	}
 
+	priv->rf[FIRST_ROUND_COMPLETE] = devm_regmap_field_alloc(dev,
+								priv->tm_map,
+								priv->fields[FIRST_ROUND_COMPLETE]);
+	if (IS_ERR(priv->rf[FIRST_ROUND_COMPLETE])) {
+		ret = PTR_ERR(priv->rf[FIRST_ROUND_COMPLETE]);
+		goto err_put_device;
+	}
+
 	/* This loop might need changes if enum regfield_ids is reordered */
 	for (j = LAST_TEMP_0; j <= UP_THRESH_15; j += 16) {
 		for (i = 0; i < priv->feat->max_sensors; i++) {
@@ -1089,6 +1246,43 @@ static int tsens_register(struct tsens_priv *priv)
 	return ret;
 }
 
+static void tsens_reinit_worker_notify(struct work_struct *work)
+{
+	int i, ret, temp;
+	struct tsens_irq_data d;
+	struct tsens_priv *priv = container_of(work, struct tsens_priv,
+					       reinit_wa_notify);
+
+	for (i = 0; i < priv->num_sensors; i++) {
+		const struct tsens_sensor *s = &priv->sensor[i];
+		u32 hw_id = s->hw_id;
+
+		if (!s->tzd)
+			continue;
+		if (!tsens_threshold_violated(priv, hw_id, &d))
+			continue;
+
+		ret = get_temp_tsens_valid(s, &temp);
+		if (ret) {
+			dev_err(priv->dev, "[%u] %s: error reading sensor\n",
+				hw_id, __func__);
+			continue;
+		}
+
+		tsens_read_irq_state(priv, hw_id, s, &d);
+
+		if ((d.up_thresh < temp) || (d.low_thresh > temp)) {
+			dev_dbg(priv->dev, "[%u] %s: TZ update trigger (%d mC)\n",
+				hw_id, __func__, temp);
+			thermal_zone_device_update(s->tzd,
+						   THERMAL_EVENT_UNSPECIFIED);
+		} else {
+			dev_dbg(priv->dev, "[%u] %s: no violation:  %d\n",
+				hw_id, __func__, temp);
+		}
+	}
+}
+
 static int tsens_probe(struct platform_device *pdev)
 {
 	int ret, i;
@@ -1131,6 +1325,19 @@ static int tsens_probe(struct platform_device *pdev)
 	priv->dev = dev;
 	priv->num_sensors = num_sensors;
 	priv->needs_reinit_wa = data->needs_reinit_wa;
+
+	if (priv->needs_reinit_wa && !qcom_scm_is_available())
+		return -EPROBE_DEFER;
+
+	if (priv->needs_reinit_wa) {
+		priv->reinit_wa_worker = alloc_workqueue("tsens_reinit_work",
+							 WQ_HIGHPRI, 0);
+		if (!priv->reinit_wa_worker)
+			return -ENOMEM;
+
+		INIT_WORK(&priv->reinit_wa_notify, tsens_reinit_worker_notify);
+	}
+
 	priv->ops = data->ops;
 	for (i = 0;  i < priv->num_sensors; i++) {
 		if (data->hw_ids)
@@ -1143,13 +1350,15 @@ static int tsens_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, priv);
 
-	if (!priv->ops || !priv->ops->init || !priv->ops->get_temp)
-		return -EINVAL;
+	if (!priv->ops || !priv->ops->init || !priv->ops->get_temp) {
+		ret = -EINVAL;
+		goto free_wq;
+	}
 
 	ret = priv->ops->init(priv);
 	if (ret < 0) {
 		dev_err(dev, "%s: init failed\n", __func__);
-		return ret;
+		goto free_wq;
 	}
 
 	if (priv->ops->calibrate) {
@@ -1157,11 +1366,23 @@ static int tsens_probe(struct platform_device *pdev)
 		if (ret < 0) {
 			if (ret != -EPROBE_DEFER)
 				dev_err(dev, "%s: calibration failed\n", __func__);
-			return ret;
+
+			goto free_wq;
 		}
 	}
 
-	return tsens_register(priv);
+	ret = tsens_register(priv);
+	if (ret < 0) {
+		dev_err(dev, "%s: registration failed\n", __func__);
+		goto free_wq;
+	}
+
+	list_add_tail(&priv->list, &tsens_device_list);
+	return 0;
+
+free_wq:
+	destroy_workqueue(priv->reinit_wa_worker);
+	return ret;
 }
 
 static int tsens_remove(struct platform_device *pdev)
@@ -1172,6 +1393,8 @@ static int tsens_remove(struct platform_device *pdev)
 	tsens_disable_irq(priv);
 	if (priv->ops->disable)
 		priv->ops->disable(priv);
+
+	destroy_workqueue(priv->reinit_wa_worker);
 
 	return 0;
 }
