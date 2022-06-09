@@ -38,6 +38,7 @@ description: |
         msm8994
         msm8996
         sa8155p
+        sa8155p-iot-v2
         sc7180
         sc7280
         sdm630
@@ -180,6 +181,11 @@ properties:
               - qcom,ipq8074-hk10-c1
               - qcom,ipq8074-hk10-c2
           - const: qcom,ipq8074
+
+      - items:
+          - enum:
+              - qcom,sa8155p-iot-v2-adp
+          - const: qcom,sa8155p-iot-v2
 
       - items:
           - enum:
