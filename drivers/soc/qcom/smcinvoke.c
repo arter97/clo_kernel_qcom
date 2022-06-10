@@ -1769,7 +1769,7 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 		return -EFAULT;
 	}
 
-	if (req.argsize != sizeof(union smcinvoke_arg)) {
+	if (req.args && req.argsize != sizeof(union smcinvoke_arg)) {
 		pr_err("arguments size for invoke req is invalid\n");
 		return -EINVAL;
 	}
