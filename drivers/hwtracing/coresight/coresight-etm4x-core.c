@@ -1040,6 +1040,16 @@ static bool etm4_init_sysreg_access(struct etmv4_drvdata *drvdata,
 		return false;
 
 	/*
+	 * Some Qualcomm implementations require skipping powering up the trace unit,
+	 * as the ETMs are in the same power domain as their CPU cores.
+	 *
+	 * Since the 'skip_power_up' flag is used inside 'etm4_init_arch_data' function,
+	 * initialize it before the function is called.
+	 */
+	if (fwnode_property_present(dev_fwnode(dev), "qcom,skip-power-up"))
+		drvdata->skip_power_up = true;
+
+	/*
 	 * ETMs implementing sysreg access must implement TRCDEVARCH.
 	 */
 	devarch = read_etm4x_sysreg_const_offset(TRCDEVARCH);
@@ -1984,8 +1994,7 @@ static int etm4_add_coresight_dev(struct etm4_init_arg *init_arg)
 		return -EINVAL;
 
 	/* TRCPDCR is not accessible with system instructions. */
-	if (!desc.access.io_mem ||
-	    fwnode_property_present(dev_fwnode(dev), "qcom,skip-power-up"))
+	if (!desc.access.io_mem)
 		drvdata->skip_power_up = true;
 
 	major = ETM_ARCH_MAJOR_VERSION(drvdata->arch);
