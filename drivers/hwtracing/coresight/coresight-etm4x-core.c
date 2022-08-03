@@ -1912,6 +1912,16 @@ static int etm4_probe(struct device *dev, void __iomem *base, u32 etm_pid)
 	init_arg.csa = &desc.access;
 	init_arg.pid = etm_pid;
 
+	/*
+	 * Some Qualcomm implementations require skipping powering up the trace unit,
+	 * as the ETMs are in the same power domain as their CPU cores.
+	 *
+	 * Since the 'skip_power_up' flag is used inside 'etm4_init_arch_data' function,
+	 * initialize it before the function is called.
+	 */
+	if (fwnode_property_present(dev_fwnode(dev), "qcom,skip-power-up"))
+		drvdata->skip_power_up = true;
+
 	if (smp_call_function_single(drvdata->cpu,
 				etm4_init_arch_data,  &init_arg, 1))
 		dev_err(dev, "ETM arch init failed\n");
@@ -1920,8 +1930,7 @@ static int etm4_probe(struct device *dev, void __iomem *base, u32 etm_pid)
 		return -EINVAL;
 
 	/* TRCPDCR is not accessible with system instructions. */
-	if (!desc.access.io_mem ||
-	    fwnode_property_present(dev_fwnode(dev), "qcom,skip-power-up"))
+	if (!desc.access.io_mem)
 		drvdata->skip_power_up = true;
 
 	major = ETM_ARCH_MAJOR_VERSION(drvdata->arch);
