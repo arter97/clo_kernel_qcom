@@ -328,6 +328,14 @@
 	};
 };
 
+&qmi_tmd_devices {
+	status = "okay";
+};
+
+&qupv3_id_1 {
+	status = "okay";
+};
+
 &ethernet {
 	status = "okay";
 
@@ -364,10 +372,6 @@
 			compatible = "ethernet-phy-ieee802.3-c22";
 		};
 	};
-};
-
-&qupv3_id_1 {
-	status = "okay";
 };
 
 &i2c0 {
