@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "VendorHooks: " fmt
@@ -16,6 +16,7 @@
 #include <linux/atomic.h>
 #include <linux/sched/debug.h>
 #include <linux/io.h>
+#include <linux/syscore_ops.h>
 
 #include <soc/qcom/watchdog.h>
 
@@ -103,6 +104,7 @@ static inline void register_spinlock_bug_hook(struct platform_device *pdev) { }
 
 #ifdef CONFIG_RANDOMIZE_BASE
 #define KASLR_OFFSET_MASK	0x00000000FFFFFFFF
+static void __iomem *kaslr_imem_addr;
 static void __iomem *map_prop_mem(const char *propname)
 {
 	struct device_node *np = of_find_compatible_node(NULL, NULL, propname);
@@ -121,40 +123,61 @@ static void __iomem *map_prop_mem(const char *propname)
 
 static void store_kaslr_offset(void)
 {
-	void __iomem *mem = map_prop_mem("qcom,msm-imem-kaslr_offset");
+	kaslr_imem_addr = map_prop_mem("qcom,msm-imem-kaslr_offset");
 
-	if (!mem)
+	if (!kaslr_imem_addr)
 		return;
 
-	__raw_writel(0xdead4ead, mem);
+	__raw_writel(0xdead4ead, kaslr_imem_addr);
 	__raw_writel((kimage_vaddr - KIMAGE_VADDR) & KASLR_OFFSET_MASK,
-		     mem + 4);
+		     kaslr_imem_addr + 4);
 	__raw_writel(((kimage_vaddr - KIMAGE_VADDR) >> 32) & KASLR_OFFSET_MASK,
-		     mem + 8);
+		     kaslr_imem_addr + 8);
 
-	iounmap(mem);
 }
 #else
 static void store_kaslr_offset(void) {}
 #endif /* CONFIG_RANDOMIZE_BASE */
+
+#if defined(CONFIG_RANDOMIZE_BASE) && defined(CONFIG_HIBERNATION)
+static void kaslr_offset_restore_syscore_resume(void)
+{
+#define KASLR_OFFSET_BIT_MASK      0x00000000FFFFFFFF
+	if (kaslr_imem_addr) {
+		__raw_writel(0xdead4ead, kaslr_imem_addr);
+		__raw_writel(KASLR_OFFSET_BIT_MASK &
+			(kimage_vaddr - KIMAGE_VADDR), kaslr_imem_addr + 4);
+		__raw_writel(KASLR_OFFSET_BIT_MASK &
+			((kimage_vaddr - KIMAGE_VADDR) >> 32),
+				kaslr_imem_addr + 8);
+	}
+}
+
+static struct syscore_ops kaslr_offset_restore_syscore_ops = {
+	.resume = kaslr_offset_restore_syscore_resume,
+};
+#endif
 
 static int cpu_vendor_hooks_driver_probe(struct platform_device *pdev)
 {
 	int ret;
 
 	store_kaslr_offset();
+#ifdef CONFIG_HIBERNATION
+	register_syscore_ops(&kaslr_offset_restore_syscore_ops);
+#endif
 
 	ret = register_trace_android_vh_ipi_stop(trace_ipi_stop, NULL);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register android_vh_ipi_stop hook\n");
-		return ret;
+		goto error;
 	}
 
 	ret = register_trace_android_vh_printk_hotplug(printk_hotplug, NULL);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to android_vh_printk_hotplug hook\n");
 		unregister_trace_android_vh_ipi_stop(trace_ipi_stop, NULL);
-		return ret;
+		goto error;
 	}
 
 	ret = register_trace_android_vh_timer_calc_index(timer_recalc_index, NULL);
@@ -162,11 +185,17 @@ static int cpu_vendor_hooks_driver_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to android_vh_timer_calc_index hook\n");
 		unregister_trace_android_vh_ipi_stop(trace_ipi_stop, NULL);
 		unregister_trace_android_vh_printk_hotplug(printk_hotplug, NULL);
-		return ret;
+		goto error;
 	}
 
 	register_spinlock_bug_hook(pdev);
 
+	return ret;
+
+error:
+#ifdef CONFIG_RANDOMIZE_BASE
+	iounmap(kaslr_imem_addr);
+#endif
 	return ret;
 }
 
