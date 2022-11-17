@@ -14,6 +14,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/reset-controller.h>
 #include <linux/devfreq.h>
+#include <linux/interconnect.h>
 
 #include <ufs/ufshcd.h>
 #include "ufshcd-pltfrm.h"
@@ -936,6 +937,23 @@ static const struct reset_control_ops ufs_qcom_reset_ops = {
 	.deassert = ufs_qcom_reset_deassert,
 };
 
+static int ufs_qcom_icc_init(struct device *dev, char *pathname,
+		u32 avg_bw, u32 peak_bw)
+{
+	struct icc_path *path;
+	int ret;
+
+	path = devm_of_icc_get(dev, pathname);
+	if (IS_ERR(path))
+		return dev_err_probe(dev, PTR_ERR(path), "failed to acquire interconnect path\n");
+
+	ret = icc_set_bw(path, avg_bw, peak_bw);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "failed to set bandwidth request\n");
+
+	return 0;
+}
+
 /**
  * ufs_qcom_init - bind phy with controller
  * @hba: host controller instance
@@ -1001,6 +1019,14 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 
 	ufs_qcom_get_controller_revision(hba, &host->hw_ver.major,
 		&host->hw_ver.minor, &host->hw_ver.step);
+
+	err = ufs_qcom_icc_init(dev, "ufs-ddr", 4096000, 0);
+	if (err)
+		goto out_variant_clear;
+
+	err = ufs_qcom_icc_init(dev, "cpu-ufs", 1000, 0);
+	if (err)
+		goto out_variant_clear;
 
 	/*
 	 * for newer controllers, device reference clock control bit has
