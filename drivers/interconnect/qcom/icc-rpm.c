@@ -204,7 +204,7 @@ static int qcom_icc_qos_set(struct icc_node *node, u64 sum_bw)
 	}
 }
 
-static int qcom_icc_rpm_set(int mas_rpm_id, int slv_rpm_id, u64 sum_bw)
+int qcom_icc_rpm_set(int mas_rpm_id, int slv_rpm_id, u64 sum_bw)
 {
 	int ret = 0;
 
@@ -234,6 +234,7 @@ static int qcom_icc_rpm_set(int mas_rpm_id, int slv_rpm_id, u64 sum_bw)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(qcom_icc_rpm_set);
 
 static int __qcom_icc_set(struct icc_node *n, struct qcom_icc_node *qn,
 			  u64 sum_bw)
