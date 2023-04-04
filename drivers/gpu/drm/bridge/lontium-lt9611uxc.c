@@ -193,7 +193,7 @@ static void lt9611uxc_reset(struct lt9611uxc *lt9611uxc)
 	msleep(20);
 
 	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 1);
-	msleep(300);
+	msleep(1000);
 }
 
 static void lt9611uxc_assert_5v(struct lt9611uxc *lt9611uxc)
