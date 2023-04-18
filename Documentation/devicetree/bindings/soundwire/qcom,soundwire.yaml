@@ -95,7 +95,7 @@ properties:
     maxItems: 16
 
   qcom,ports-sinterval:
-    $ref: /schemas/types.yaml#/definitions/uint32-array
+    $ref: /schemas/types.yaml#/definitions/uint16-array
     description:
       Sample interval of each data port.
       Out ports followed by In ports. Used for Sample Interval calculation.
@@ -104,8 +104,6 @@ properties:
       More info in MIPI Alliance SoundWire 1.0 Specifications.
     minItems: 3
     maxItems: 16
-    items:
-      maximum: 0xffff
 
   qcom,ports-offset1:
     $ref: /schemas/types.yaml#/definitions/uint8-array
