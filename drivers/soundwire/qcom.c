@@ -147,7 +147,7 @@ enum {
 };
 
 struct qcom_swrm_port_config {
-	u32 si;
+	u16 si;
 	u8 off1;
 	u8 off2;
 	u8 bp_mode;
@@ -1292,7 +1292,7 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 	struct device_node *np = ctrl->dev->of_node;
 	u8 off1[QCOM_SDW_MAX_PORTS];
 	u8 off2[QCOM_SDW_MAX_PORTS];
-	u32 si[QCOM_SDW_MAX_PORTS];
+	u16 si[QCOM_SDW_MAX_PORTS];
 	u8 bp_mode[QCOM_SDW_MAX_PORTS] = { 0, };
 	u8 hstart[QCOM_SDW_MAX_PORTS];
 	u8 hstop[QCOM_SDW_MAX_PORTS];
@@ -1300,7 +1300,7 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 	u8 blk_group_count[QCOM_SDW_MAX_PORTS];
 	u8 lane_control[QCOM_SDW_MAX_PORTS];
 	int i, ret, nports, val;
-	bool si_32 = false;
+	bool si_16 = false;
 
 	ctrl->reg_read(ctrl, SWRM_COMP_PARAMS, &val);
 
@@ -1346,11 +1346,11 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 	ret = of_property_read_u8_array(np, "qcom,ports-sinterval-low",
 					(u8 *)si, nports);
 	if (ret) {
-		ret = of_property_read_u32_array(np, "qcom,ports-sinterval",
+		ret = of_property_read_u16_array(np, "qcom,ports-sinterval",
 						 si, nports);
 		if (ret)
 			return ret;
-		si_32 = true;
+		si_16 = true;
 	}
 
 	ret = of_property_read_u8_array(np, "qcom,ports-block-pack-mode",
@@ -1379,7 +1379,7 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 
 	for (i = 0; i < nports; i++) {
 		/* Valid port number range is from 1-14 */
-		if (si_32)
+		if (si_16)
 			ctrl->pconfig[i + 1].si = si[i];
 		else
 			ctrl->pconfig[i + 1].si = ((u8 *)si)[i];
