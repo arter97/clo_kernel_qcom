@@ -1484,7 +1484,7 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 {
 	struct clk_hw **hw_clks;
 	const struct rpm_smd_clk_desc *desc;
-	int ret, i, is_holi, hw_clk_handoff = false;
+	int ret, i, is_holi, is_mdm9607, hw_clk_handoff = false;
 
 	desc = of_device_get_match_data(&pdev->dev);
 	if (!desc)
@@ -1492,7 +1492,11 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 
 	is_holi = of_device_is_compatible(pdev->dev.of_node,
 						"qcom,rpmcc-holi");
-	if (is_holi) {
+
+	is_mdm9607 = of_device_is_compatible(pdev->dev.of_node,
+						"qcom,rpmcc-mdm9607");
+
+	if (is_holi || is_mdm9607) {
 		ret = clk_vote_bimc(&holi_bimc_clk.hw, INT_MAX);
 		if (ret < 0)
 			return ret;
@@ -1550,6 +1554,19 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 		/* Hold an active set vote for the snoc_keepalive_a_clk */
 		clk_set_rate(holi_snoc_a_clk.hw.clk, 19200000);
 		clk_prepare_enable(holi_snoc_a_clk.hw.clk);
+	}
+
+	if (is_mdm9607) {
+		/*
+		 * Keep an active vote on CXO in case no other driver
+		 * votes for it.
+		 */
+		clk_prepare_enable(sdm660_bi_tcxo_a.hw.clk);
+
+		/* Hold an active set vote for the pcnoc_keepalive_a_clk */
+		clk_prepare_enable(msm8916_pcnoc_a_clk.hw.clk);
+		clk_set_rate(msm8916_pcnoc_a_clk.hw.clk, 19200000);
+
 	}
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,bimc-log-stop"))
