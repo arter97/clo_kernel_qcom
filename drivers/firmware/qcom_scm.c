@@ -202,6 +202,13 @@ static enum qcom_scm_convention __get_convention(void)
 		return qcom_scm_convention;
 
 	/*
+	 * When running on 32bit kernel, SCM call with convention
+	 * SMC_CONVENTION_ARM_64 is causing the system crash. To avoid that
+	 * use SMC_CONVENTION_ARM_64 for 64bit kernel and SMC_CONVENTION_ARM_32
+	 * for 32bit kernel.
+	 */
+#if IS_ENABLED(CONFIG_ARM64)
+	/*
 	 * Device isn't required as there is only one argument - no device
 	 * needed to dma_map_single to secure world
 	 */
@@ -221,6 +228,7 @@ static enum qcom_scm_convention __get_convention(void)
 		forced = true;
 		goto found;
 	}
+#endif
 
 	probed_convention = SMC_CONVENTION_ARM_32;
 	ret = __scm_smc_call(NULL, &desc, probed_convention, &res, true);
