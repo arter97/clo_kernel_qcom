@@ -329,6 +329,10 @@ properties:
         type: object
         $ref: /schemas/phy/qcom,usb-hs-phy.yaml
 
+  pin-switch-delay-us:
+    type: uint32
+    description: the optional delay time in (us) to allow for the application of a pinctrl-n state switch.
+
 dependencies:
   port: [ usb-role-switch ]
   mux-controls: [ mux-control-names ]
