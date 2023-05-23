@@ -15,8 +15,11 @@
 #define SLOPE_FACTOR		1000
 #define SLOPE_DEFAULT		3200
 #define TIMEOUT_US		100
+#define RESET_TIMEOUT_MS	2
 #define THRESHOLD_MAX_ADC_CODE	0x3ff
 #define THRESHOLD_MIN_ADC_CODE	0x0
+
+#define CRITICAL_INT_EN		(BIT(2))
 
 #define MAX_SENSORS 16
 
@@ -168,6 +171,7 @@ enum regfield_ids {
 	/* ----- TM ------ */
 	/* TRDY */
 	TRDY,
+	FIRST_ROUND_COMPLETE,
 	/* INTERRUPT ENABLE */
 	INT_EN,	/* v2+ has separate enables for crit, upper and lower irq */
 	/* STATUS */
@@ -522,6 +526,7 @@ struct tsens_features {
  * @num_sensors: Number of sensors supported by platform
  * @ops: operations the tsens instance supports
  * @hw_ids: Subset of sensors ids supported by platform, if not the first n
+ * @needs_reinit_wa: tsens controller might need reinit via trustzone
  * @feat: features of the IP
  * @fields: bitfield locations
  */
@@ -529,6 +534,7 @@ struct tsens_plat_data {
 	const u32		num_sensors;
 	const struct tsens_ops	*ops;
 	unsigned int		*hw_ids;
+	bool			needs_reinit_wa;
 	struct tsens_features	*feat;
 	const struct reg_field		*fields;
 };
@@ -551,6 +557,7 @@ struct tsens_context {
  * @srot_map: pointer to SROT register address space
  * @tm_offset: deal with old device trees that don't address TM and SROT
  *             address space separately
+ * @needs_reinit_wa: tsens controller might need reinit via trustzone
  * @ul_lock: lock while processing upper/lower threshold interrupts
  * @crit_lock: lock while processing critical threshold interrupts
  * @rf: array of regmap_fields used to store value of the field
@@ -568,6 +575,15 @@ struct tsens_priv {
 	struct regmap			*tm_map;
 	struct regmap			*srot_map;
 	u32				tm_offset;
+	bool				needs_reinit_wa;
+
+	struct work_struct		reinit_wa_notify;
+
+	/* protects reinit related serialization */
+	struct mutex			reinit_mutex;
+
+	/* lock for reinit workaround */
+	spinlock_t			reinit_lock;
 
 	/* lock for upper/lower threshold interrupts */
 	spinlock_t			ul_lock;
@@ -641,6 +657,6 @@ extern struct tsens_plat_data data_8916, data_8939, data_8974, data_9607;
 extern struct tsens_plat_data data_tsens_v1, data_8976, data_8956;
 
 /* TSENS v2 targets */
-extern struct tsens_plat_data data_8996, data_ipq8074, data_tsens_v2;
+extern struct tsens_plat_data data_8996, data_ipq8074, data_tsens_v2_reinit, data_tsens_v2;
 
 #endif /* __QCOM_TSENS_H__ */
