@@ -775,6 +775,18 @@ static const struct adc5_data adc5_data_pmic = {
 				1, 2, 4, 8, 16, 32, 64, 128},
 };
 
+const struct adc5_data adc5_data_pmic_lite = {
+	.full_scale_code_volt = 0x70e4,
+	.full_scale_code_cur = 0x1388,
+	.adc_chans = adc5_chans_pmic,
+	.info = &adc5_info,
+	.decimation = (unsigned int [ADC5_DECIMATION_SAMPLES_MAX])
+				{250, 420, 840},
+	.hw_settle_1 = (unsigned int [VADC_HW_SETTLE_SAMPLES_MAX])
+				{15, 100, 200, 300, 400, 500, 600, 700,
+				 800, 900, 1, 2, 4, 6, 8, 10},
+};
+
 static const struct adc5_data adc7_data_pmic = {
 	.full_scale_code_volt = 0x70e4,
 	.adc_chans = adc7_chans_pmic,
@@ -806,6 +818,10 @@ static const struct of_device_id adc5_match_table[] = {
 	{
 		.compatible = "qcom,spmi-adc5",
 		.data = &adc5_data_pmic,
+	},
+	{
+		.compatible = "qcom,spmi-adc5-lite",
+		.data = &adc5_data_pmic_lite,
 	},
 	{
 		.compatible = "qcom,spmi-adc7",
