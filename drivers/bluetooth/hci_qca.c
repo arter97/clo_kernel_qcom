@@ -1695,6 +1695,8 @@ static int qca_power_on(struct hci_dev *hdev)
 			gpiod_set_value_cansleep(qcadev->bt_en, 1);
 			/* Controller needs time to bootup. */
 			msleep(150);
+			serdev_device_close(hu->serdev);
+			ret = serdev_device_open(hu->serdev);
 		}
 	}
 
@@ -2199,7 +2201,8 @@ static void qca_serdev_shutdown(struct device *dev)
 	const u8 ibs_wake_cmd[] = { 0xFD };
 	const u8 edl_reset_soc_cmd[] = { 0x01, 0x00, 0xFC, 0x01, 0x05 };
 
-	if (qcadev->btsoc_type == QCA_QCA6390) {
+	if (qcadev->btsoc_type == QCA_QCA6390 ||
+	    qcadev->btsoc_type == QCA_WCN6855) {
 		if (test_bit(QCA_BT_OFF, &qca->flags) ||
 		    !test_bit(HCI_RUNNING, &hdev->flags))
 			return;
