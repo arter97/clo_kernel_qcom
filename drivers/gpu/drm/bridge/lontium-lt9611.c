@@ -811,6 +811,9 @@ static enum drm_mode_status lt9611_bridge_mode_valid(struct drm_bridge *bridge,
 	    drm_mode_vrefresh(mode) > 30)
 		return MODE_CLOCK_HIGH;
 
+	if (mode->hdisplay == 1920 && mode->vdisplay == 2160)
+		return MODE_PANEL;
+
 	if (mode->hdisplay > 2000 && !lt9611->dsi1_node)
 		return MODE_PANEL;
 	else
