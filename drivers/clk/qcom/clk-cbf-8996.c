@@ -5,10 +5,14 @@
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
+#include <linux/interconnect-clk.h>
+#include <linux/interconnect-provider.h>
 #include <linux/of.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+
+#include <dt-bindings/interconnect/qcom,msm8996-cbf.h>
 
 #include "clk-alpha-pll.h"
 #include "clk-regmap.h"
@@ -61,6 +65,19 @@ static const struct alpha_pll_config cbfpll_config = {
 	.early_output_mask = BIT(3),
 };
 
+static const struct alpha_pll_config cbfpll_pro_config = {
+	.l = 72,
+	.config_ctl_val = 0x200d4828,
+	.config_ctl_hi_val = 0x006,
+	.test_ctl_val = 0x1c000000,
+	.test_ctl_hi_val = 0x00004000,
+	.pre_div_mask = BIT(12),
+	.post_div_mask = 0x3 << 8,
+	.post_div_val = 0x3 << 8,
+	.main_output_mask = BIT(0),
+	.early_output_mask = BIT(3),
+};
+
 static struct clk_alpha_pll cbf_pll = {
 	.offset = CBF_PLL_OFFSET,
 	.regs = cbf_pll_regs,
@@ -89,10 +106,31 @@ static struct clk_fixed_factor cbf_pll_postdiv = {
 	},
 };
 
+static struct clk_fixed_factor cbf_pro_pll_postdiv = {
+	.mult = 1,
+	.div = 4,
+	.hw.init = &(struct clk_init_data){
+		.name = "cbf_pll_postdiv",
+		.parent_hws = (const struct clk_hw*[]){
+			&cbf_pll.clkr.hw
+		},
+		.num_parents = 1,
+		.ops = &clk_fixed_factor_ops,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 static const struct clk_parent_data cbf_mux_parent_data[] = {
 	{ .index = DT_XO },
 	{ .hw = &cbf_pll.clkr.hw },
 	{ .hw = &cbf_pll_postdiv.hw },
+	{ .index = DT_APCS_AUX },
+};
+
+static const struct clk_parent_data cbf_pro_mux_parent_data[] = {
+	{ .index = DT_XO },
+	{ .hw = &cbf_pll.clkr.hw },
+	{ .hw = &cbf_pro_pll_postdiv.hw },
 	{ .index = DT_APCS_AUX },
 };
 
@@ -136,12 +174,14 @@ static int clk_cbf_8996_mux_determine_rate(struct clk_hw *hw,
 					   struct clk_rate_request *req)
 {
 	struct clk_hw *parent;
+	struct clk_hw *post_div_hw = clk_hw_get_parent_by_index(hw, CBF_DIV_INDEX);
+	struct clk_fixed_factor *post_div = to_clk_fixed_factor(post_div_hw);
 
-	if (req->rate < (DIV_THRESHOLD / 2))
+	if (req->rate < (DIV_THRESHOLD / post_div->div))
 		return -EINVAL;
 
 	if (req->rate < DIV_THRESHOLD)
-		parent = clk_hw_get_parent_by_index(hw, CBF_DIV_INDEX);
+		parent = post_div_hw;
 	else
 		parent = clk_hw_get_parent_by_index(hw, CBF_PLL_INDEX);
 
@@ -173,10 +213,24 @@ static struct clk_cbf_8996_mux cbf_mux = {
 	},
 };
 
+static struct clk_cbf_8996_mux cbf_pro_mux = {
+	.reg = CBF_MUX_OFFSET,
+	.nb.notifier_call = cbf_clk_notifier_cb,
+	.clkr.hw.init = &(struct clk_init_data) {
+		.name = "cbf_mux",
+		.parent_data = cbf_pro_mux_parent_data,
+		.num_parents = ARRAY_SIZE(cbf_pro_mux_parent_data),
+		.ops = &clk_cbf_8996_mux_ops,
+		/* CPU clock is critical and should never be gated */
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
+	},
+};
+
 static int cbf_clk_notifier_cb(struct notifier_block *nb, unsigned long event,
 			       void *data)
 {
 	struct clk_notifier_data *cnd = data;
+	struct clk_hw *hw = __clk_get_hw(cnd->clk);
 
 	switch (event) {
 	case PRE_RATE_CHANGE:
@@ -184,19 +238,19 @@ static int cbf_clk_notifier_cb(struct notifier_block *nb, unsigned long event,
 		 * Avoid overvolting. clk_core_set_rate_nolock() walks from top
 		 * to bottom, so it will change the rate of the PLL before
 		 * chaging the parent of PMUX. This can result in pmux getting
-		 * clocked twice the expected rate.
+		 * clocked twice (or 4 times) the expected rate.
 		 *
-		 * Manually switch to PLL/2 here.
+		 * Manually switch to PLL/DIV here.
 		 */
 		if (cnd->old_rate > DIV_THRESHOLD &&
 		    cnd->new_rate < DIV_THRESHOLD)
-			clk_cbf_8996_mux_set_parent(&cbf_mux.clkr.hw, CBF_DIV_INDEX);
+			clk_cbf_8996_mux_set_parent(hw, CBF_DIV_INDEX);
 		break;
 	case ABORT_RATE_CHANGE:
 		/* Revert manual change */
 		if (cnd->new_rate < DIV_THRESHOLD &&
 		    cnd->old_rate > DIV_THRESHOLD)
-			clk_cbf_8996_mux_set_parent(&cbf_mux.clkr.hw, CBF_PLL_INDEX);
+			clk_cbf_8996_mux_set_parent(hw, CBF_PLL_INDEX);
 		break;
 	default:
 		break;
@@ -209,9 +263,48 @@ static struct clk_hw *cbf_msm8996_hw_clks[] = {
 	&cbf_pll_postdiv.hw,
 };
 
+static struct clk_hw *cbf_msm8996pro_hw_clks[] = {
+	&cbf_pro_pll_postdiv.hw,
+};
+
 static struct clk_regmap *cbf_msm8996_clks[] = {
 	&cbf_pll.clkr,
 	&cbf_mux.clkr,
+};
+
+static struct clk_regmap *cbf_msm8996pro_clks[] = {
+	&cbf_pll.clkr,
+	&cbf_pro_mux.clkr,
+};
+
+struct cbf_match_data {
+	const struct alpha_pll_config *config;
+	struct clk_fixed_factor *cbf_pll_postdiv;
+	struct clk_cbf_8996_mux *cbf_mux;
+	struct clk_hw **hw_clks;
+	size_t nr_hw_clks;
+	struct clk_regmap **clks;
+	size_t nr_clks;
+};
+
+static const struct cbf_match_data cbf_msm8996_match_data = {
+	.config = &cbfpll_config,
+	.cbf_pll_postdiv = &cbf_pll_postdiv,
+	.cbf_mux = &cbf_mux,
+	.hw_clks = cbf_msm8996_hw_clks,
+	.nr_hw_clks = ARRAY_SIZE(cbf_msm8996_hw_clks),
+	.clks = cbf_msm8996_clks,
+	.nr_clks = ARRAY_SIZE(cbf_msm8996_clks)
+};
+
+static const struct cbf_match_data cbf_msm8996pro_match_data = {
+	.config = &cbfpll_pro_config,
+	.cbf_pll_postdiv = &cbf_pro_pll_postdiv,
+	.cbf_mux = &cbf_pro_mux,
+	.hw_clks = cbf_msm8996pro_hw_clks,
+	.nr_hw_clks = ARRAY_SIZE(cbf_msm8996pro_hw_clks),
+	.clks = cbf_msm8996pro_clks,
+	.nr_clks = ARRAY_SIZE(cbf_msm8996pro_clks)
 };
 
 static const struct regmap_config cbf_msm8996_regmap_config = {
@@ -223,11 +316,54 @@ static const struct regmap_config cbf_msm8996_regmap_config = {
 	.val_format_endian	= REGMAP_ENDIAN_LITTLE,
 };
 
+#ifdef CONFIG_INTERCONNECT
+
+/* Random ID that doesn't clash with main qnoc and OSM */
+#define CBF_MASTER_NODE 2000
+
+static int qcom_msm8996_cbf_icc_register(struct platform_device *pdev, struct clk_hw *cbf_hw)
+{
+	struct device *dev = &pdev->dev;
+	struct clk *clk = devm_clk_hw_get_clk(dev, cbf_hw, "cbf");
+	const struct icc_clk_data data[] = {
+		{ .clk = clk, .name = "cbf", },
+	};
+	struct icc_provider *provider;
+
+	provider = icc_clk_register(dev, CBF_MASTER_NODE, ARRAY_SIZE(data), data);
+	if (IS_ERR(provider))
+		return PTR_ERR(provider);
+
+	platform_set_drvdata(pdev, provider);
+
+	return 0;
+}
+
+static int qcom_msm8996_cbf_icc_remove(struct platform_device *pdev)
+{
+	struct icc_provider *provider = platform_get_drvdata(pdev);
+
+	icc_clk_unregister(provider);
+
+	return 0;
+}
+#else
+static int qcom_msm8996_cbf_icc_register(struct platform_device *pdev,  struct clk_hw *cbf_hw)
+{
+	dev_warn(&pdev->dev, "interconnects support is disabled, CBF clock is fixed\n");
+
+	return 0;
+}
+#define qcom_msm8996_cbf_icc_remove(pdev) (0)
+#define qcom_msm8996_cbf_icc_sync_state(dev) (0)
+#endif
+
 static int qcom_msm8996_cbf_probe(struct platform_device *pdev)
 {
 	void __iomem *base;
 	struct regmap *regmap;
 	struct device *dev = &pdev->dev;
+	const struct cbf_match_data *data = of_device_get_match_data(dev);
 	int i, ret;
 
 	base = devm_platform_ioremap_resource(pdev, 0);
@@ -249,7 +385,7 @@ static int qcom_msm8996_cbf_probe(struct platform_device *pdev)
 			   CBF_MUX_AUTO_CLK_SEL_ALWAYS_ON_MASK,
 			   CBF_MUX_AUTO_CLK_SEL_ALWAYS_ON_GPLL0_SEL);
 
-	clk_alpha_pll_configure(&cbf_pll, regmap, &cbfpll_config);
+	clk_alpha_pll_configure(&cbf_pll, regmap, data->config);
 
 	/* Wait for PLL(s) to lock */
 	udelay(50);
@@ -265,36 +401,48 @@ static int qcom_msm8996_cbf_probe(struct platform_device *pdev)
 	/* Switch CBF to use the primary PLL */
 	regmap_update_bits(regmap, CBF_MUX_OFFSET, CBF_MUX_PARENT_MASK, 0x1);
 
-	for (i = 0; i < ARRAY_SIZE(cbf_msm8996_hw_clks); i++) {
-		ret = devm_clk_hw_register(dev, cbf_msm8996_hw_clks[i]);
+	for (i = 0; i < data->nr_hw_clks; i++) {
+		ret = devm_clk_hw_register(dev, data->hw_clks[i]);
 		if (ret)
 			return ret;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(cbf_msm8996_clks); i++) {
-		ret = devm_clk_register_regmap(dev, cbf_msm8996_clks[i]);
+	for (i = 0; i < data->nr_clks; i++) {
+		ret = devm_clk_register_regmap(dev, data->clks[i]);
 		if (ret)
 			return ret;
 	}
 
-	ret = devm_clk_notifier_register(dev, cbf_mux.clkr.hw.clk, &cbf_mux.nb);
+	ret = devm_clk_notifier_register(dev, data->cbf_mux->clkr.hw.clk, &data->cbf_mux->nb);
 	if (ret)
 		return ret;
 
-	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get, &cbf_mux.clkr.hw);
+	ret = devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get, &data->cbf_mux->clkr.hw);
+	if (ret)
+		return ret;
+
+	return qcom_msm8996_cbf_icc_register(pdev, &data->cbf_mux->clkr.hw);
+}
+
+static int qcom_msm8996_cbf_remove(struct platform_device *pdev)
+{
+	return qcom_msm8996_cbf_icc_remove(pdev);
 }
 
 static const struct of_device_id qcom_msm8996_cbf_match_table[] = {
-	{ .compatible = "qcom,msm8996-cbf" },
+	{ .compatible = "qcom,msm8996-cbf", .data = &cbf_msm8996_match_data },
+	{ .compatible = "qcom,msm8996pro-cbf", .data = &cbf_msm8996pro_match_data },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, qcom_msm8996_cbf_match_table);
 
 static struct platform_driver qcom_msm8996_cbf_driver = {
 	.probe = qcom_msm8996_cbf_probe,
+	.remove = qcom_msm8996_cbf_remove,
 	.driver = {
 		.name = "qcom-msm8996-cbf",
 		.of_match_table = qcom_msm8996_cbf_match_table,
+		.sync_state = icc_sync_state,
 	},
 };
 
