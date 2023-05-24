@@ -38,7 +38,7 @@ enum task_boost_type {
 };
 
 #define WALT_NR_CPUS 8
-#define RAVG_HIST_SIZE 8
+#define RAVG_HIST_SIZE 5
 /* wts->bucket_bitmask needs to be updated if NUM_BUSY_BUCKETS > 16 */
 #define NUM_BUSY_BUCKETS 16
 #define NUM_BUSY_BUCKETS_SHIFT 4
@@ -139,6 +139,7 @@ struct walt_task_struct {
 	int				new_cpu;
 	u8				enqueue_after_migration;
 	u8				hung_detect_status;
+	int				pipeline_cpu;
 };
 
 /*

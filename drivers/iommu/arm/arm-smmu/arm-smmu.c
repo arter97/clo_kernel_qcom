@@ -1717,7 +1717,7 @@ static int arm_smmu_find_sme(struct arm_smmu_device *smmu, u16 id, u16 mask)
 
 	/* Validating SMRs is... less so */
 	for (i = 0; i < smmu->num_mapping_groups; ++i) {
-		if (!smrs[i].valid) {
+		if (!smrs[i].used) {
 			/*
 			 * Note the first free entry we come across, which
 			 * we'll claim in the end if nothing else matches.
@@ -1762,6 +1762,7 @@ static bool arm_smmu_free_sme(struct arm_smmu_device *smmu, int idx)
 		smmu->s2crs[idx].cbndx = cbndx;
 	} else if (smmu->smrs) {
 		smmu->smrs[idx].valid = false;
+		smmu->smrs[idx].used = false;
 	}
 
 	return true;
@@ -1814,6 +1815,7 @@ static int arm_smmu_master_alloc_smes(struct device *dev)
 			smrs[idx].id = sid;
 			smrs[idx].mask = mask;
 			smrs[idx].valid = config_smrs;
+			smrs[idx].used = true;
 		} else if (smrs && WARN_ON(smrs[idx].valid != config_smrs)) {
 			ret = -EINVAL;
 			goto out_err;
@@ -2641,12 +2643,19 @@ static int __arm_smmu_sid_switch(struct device *dev, void *data)
 		return 0;
 
 	smmu = cfg->smmu;
+	arm_smmu_rpm_get(smmu);
+
 	mutex_lock(&smmu->stream_map_mutex);
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
 		smmu->smrs[idx].valid = dir == SID_ACQUIRE;
 		arm_smmu_write_sme(smmu, idx);
 	}
 	mutex_unlock(&smmu->stream_map_mutex);
+
+	/* Add barrier to ensure that the SMR register writes is completed. */
+	wmb();
+	arm_smmu_rpm_put(smmu);
+
 	return 0;
 }
 
@@ -2948,6 +2957,7 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 		handoff_smrs[i].id = of_read_number(cell++, 1);
 		handoff_smrs[i].mask = of_read_number(cell++, 1);
 		handoff_smrs[i].valid = true;
+		handoff_smrs[i].used = true;
 	}
 
 
@@ -2961,6 +2971,7 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 			if (!smrs.valid)
 				continue;
 
+			smrs.used = true;
 			smrs.id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
 			smrs.mask = FIELD_GET(ARM_SMMU_SMR_MASK, smr);
 
@@ -2969,6 +2980,7 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 			if (!smrs.valid)
 				continue;
 
+			smrs.used = true;
 			smrs.id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
 			/*
 			 * The SMR mask covers bits 30:16 when extended stream
@@ -3003,9 +3015,10 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 				smmu->s2crs[i].pinned = true;
 				bitmap_set(smmu->context_map, smmu->s2crs[i].cbndx, 1);
 
-				if (!(smmu->options & ARM_SMMU_OPT_MULTI_MATCH_HANDOFF_SMR))
+				if (!(smmu->options & ARM_SMMU_OPT_MULTI_MATCH_HANDOFF_SMR)) {
 					handoff_smrs[index].valid = false;
-
+					handoff_smrs[index].used = false;
+				}
 				break;
 
 			} else {
@@ -3441,6 +3454,7 @@ static void arm_smmu_rmr_install_bypass_smr(struct arm_smmu_device *smmu)
 				smmu->smrs[idx].id = rmr->sids[i];
 				smmu->smrs[idx].mask = 0;
 				smmu->smrs[idx].valid = true;
+				smmu->smrs[idx].used = true;
 			}
 			smmu->s2crs[idx].count++;
 			smmu->s2crs[idx].type = S2CR_TYPE_BYPASS;
@@ -3731,10 +3745,31 @@ clk_unprepare:
 	return ret;
 }
 
+
+static int arm_smmu_pm_prepare(struct device *dev)
+{
+	if (!of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		return 0;
+
+	/*
+	 * In case of GFX smmu, race between rpm_suspend and system suspend could
+	 * cause a deadlock where cx vote is never put down causing timeout. So,
+	 * abort system suspend here if dev->power.usage_count is 1 as this indicates
+	 * rpm_suspend is in progress and prepare is the one incrementing this counter.
+	 * Now rpm_suspend can continue and put down cx vote. System suspend will resume
+	 * later and complete.
+	 */
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	return (atomic_read(&dev->power.usage_count) == 1) ? -EINPROGRESS : 0;
+}
+
 static const struct dev_pm_ops arm_smmu_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(arm_smmu_pm_suspend, arm_smmu_pm_resume)
 	SET_RUNTIME_PM_OPS(arm_smmu_runtime_suspend,
 			   arm_smmu_runtime_resume, NULL)
+	.prepare = arm_smmu_pm_prepare,
 };
 
 static struct platform_driver arm_smmu_driver = {

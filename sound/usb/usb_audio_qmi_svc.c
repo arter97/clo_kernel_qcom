@@ -1314,7 +1314,7 @@ static int _snd_pcm_hw_param_set(struct snd_pcm_hw_params *params,
 	return changed;
 }
 
-bool snd_usb_pcm_has_fixed_rate(struct snd_usb_substream *subs)
+bool _snd_usb_pcm_has_fixed_rate(struct snd_usb_substream *subs)
 {
 	const struct audioformat *fp;
 	struct snd_usb_audio *chip;
@@ -1393,7 +1393,7 @@ static int enable_audio_stream(struct snd_usb_substream *subs,
 		if (subs->data_endpoint)
 			close_endpoints(chip, subs);
 
-		fixed_rate = snd_usb_pcm_has_fixed_rate(subs);
+		fixed_rate = _snd_usb_pcm_has_fixed_rate(subs);
 		subs->data_endpoint = snd_usb_endpoint_open(chip, fmt,
 				&params, false, fixed_rate);
 		if (!subs->data_endpoint) {
@@ -1432,7 +1432,7 @@ static int enable_audio_stream(struct snd_usb_substream *subs,
 				 BUS_INTERVAL_FULL_SPEED));
 	}
 
-	return 0;
+	return ret;
 }
 
 static void handle_uaudio_stream_req(struct qmi_handle *handle,
@@ -1502,9 +1502,12 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 			subs->cur_audiofmt->iface : -1, req_msg->enable);
 	if (atomic_read(&chip->shutdown) || !subs->stream || !subs->stream->pcm
 			|| !subs->stream->chip) {
-		uaudio_err("chip or sub not available: shutdown:%d stream:%p pcm:%p chip:%p\n",
-				atomic_read(&chip->shutdown), subs->stream,
-				subs->stream->pcm, subs->stream->chip);
+		uaudio_err("chip or sub not available: shutdown:%d stream:%p\n",
+				atomic_read(&chip->shutdown), subs->stream);
+
+		if (subs->stream)
+			uaudio_err("pcm:%p chip:%p\n", subs->stream->pcm, subs->stream->chip);
+
 		ret = -ENODEV;
 		goto response;
 	}

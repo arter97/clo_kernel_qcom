@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -307,9 +307,8 @@ long gh_vm_ioctl_set_fw_name(struct gh_vm *vm, unsigned long arg)
 
 	scnprintf(vm->fw_name, ARRAY_SIZE(vm->fw_name),
 						"%s", vm_fw_name.name);
-
-	mutex_unlock(&vm->vm_lock);
 	gh_uevent_notify_change(GH_EVENT_CREATE_VM, vm);
+	mutex_unlock(&vm->vm_lock);
 	return ret;
 
 err_fw_name:
