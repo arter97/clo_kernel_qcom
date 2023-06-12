@@ -244,7 +244,7 @@ struct geni_i2c_clk_fld {
 static struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
 	{KHz(100), 7, 10, 11, 26},
 	{KHz(400), 2,  7, 10, 24},
-	{KHz(1000), 1, 3,  9, 18},
+	{KHz(1000), 1, 2,  8, 18},
 };
 
 static int geni_i2c_clk_map_idx(struct geni_i2c_dev *gi2c)
@@ -643,6 +643,10 @@ static int geni_i2c_prepare(struct geni_i2c_dev *gi2c)
 				dev_info(gi2c->dev, "%s: RTL based SE\n", __func__);
 			}
 		}
+
+		if (gi2c->pm_ctrl_client)
+			I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev,
+				    "SMP: %s: pm_runtime_get_sync bypassed\n", __func__);
 	}
 	return 0;
 }
@@ -843,12 +847,34 @@ static void gi2c_gsi_cb_err(struct msm_gpi_dma_async_tx_cb_param *cb,
  */
 static void gi2c_gsi_tre_process(struct geni_i2c_dev *gi2c, struct gsi_tre_queue *gsi_tre)
 {
+	int wait_cnt = 0;
+
 	I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev,
 		    "%s:start unmap_cnt:%d rd_idx:%d\n",
 		    __func__, gsi_tre->unmap_msg_cnt, gsi_tre->msg_rd_idx);
 
 	if (gsi_tre->unmap_msg_cnt == gsi_tre->msg_rd_idx)
 		return;
+
+	/**
+	 * When irq context and thread context are running independently
+	 * on different cpu cores, read index is incremenated in irq context
+	 * by one core while thread context which is being processed on
+	 * another core is submitting quickly another descriptor for gsi hw.
+	 * In this scenario previous irq context execution is still in
+	 * progress and current descriptor wait for completion is cleared by
+	 * previous descriptor in irq context, resulting in race condition.
+	 * To solve this added explicit wait until irq context is processed
+	 * when descriptors reached to maximum.
+	 */
+	if (atomic_read(&gi2c->gsi_tx.msg_cnt) == MAX_NUM_TRE_MSGS) {
+		while (spin_is_locked(&gi2c->multi_tre_lock)) {
+			if (wait_cnt % 10 == 0)
+				I2C_LOG_DBG(gi2c->ipcl, false, gi2c->dev,
+					    "%s: wait_cnt:%d\n", __func__, wait_cnt);
+			wait_cnt++;
+		}
+	}
 
 	while (gsi_tre->unmap_msg_cnt < gsi_tre->msg_rd_idx) {
 		geni_se_common_iommu_unmap_buf(gi2c->wrapper_dev,
@@ -1887,10 +1913,6 @@ static int geni_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 		}
 	}
 
-	if (gi2c->pm_ctrl_client)
-		I2C_LOG_ERR(gi2c->ipcl, true, gi2c->dev,
-			"SMP: %s: pm_runtime_get_sync bypassed\n", __func__);
-
 	// WAR : Complete previous pending cancel cmd
 	if (gi2c->prev_cancel_pending) {
 		ret = do_pending_cancel(gi2c);
@@ -2140,7 +2162,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		} else {
 			if (gi2c->is_high_perf)
 				ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
-						I2C_CORE2X_VOTE, APPS_PROC_TO_QUP_VOTE,
+						I2C_CORE2X_VOTE, GENI_DEFAULT_BW,
 						(DEFAULT_SE_CLK * DEFAULT_BUS_WIDTH));
 			else
 				ret = geni_se_common_resources_init(&gi2c->i2c_rsc,
@@ -2200,6 +2222,8 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "could not allocate for rx_sg\n");
 		return -ENOMEM;
 	}
+
+	spin_lock_init(&gi2c->multi_tre_lock);
 
 	gi2c->adap.algo = &geni_i2c_algo;
 	init_completion(&gi2c->xfer);
