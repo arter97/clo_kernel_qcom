@@ -32,7 +32,6 @@ if [ "${KERNEL_CMDLINE_CONSOLE_AUTO}" != "0" ]; then
 fi
 
 KERNEL_VENDOR_CMDLINE+=' bootconfig '
-KERNEL_VENDOR_CMDLINE+=' initcall_debug=1 ignore_loglevel=1 '
 
 ################################################################################
 ## Inheriting MSM configs

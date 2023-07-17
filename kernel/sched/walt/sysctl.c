@@ -9,14 +9,13 @@
 #include "walt.h"
 #include "trace.h"
 
-static int neg_three = -3;
-static int three = 3;
+static int neg_four = -4;
+static int four = 4;
 static int two_hundred_fifty_five = 255;
 static unsigned int ns_per_sec = NSEC_PER_SEC;
 static unsigned int one_hundred_thousand = 100000;
 static unsigned int two_hundred_million = 200000000;
 static int __maybe_unused two = 2;
-static int __maybe_unused four = 4;
 static int one_hundred = 100;
 static int one_thousand = 1000;
 static int one_thousand_twenty_four = 1024;
@@ -60,7 +59,6 @@ unsigned int __read_mostly sysctl_sched_window_stats_policy;
 unsigned int sysctl_sched_ravg_window_nr_ticks;
 unsigned int sysctl_sched_walt_rotate_big_tasks;
 unsigned int sysctl_sched_task_unfilter_period;
-unsigned int __read_mostly sysctl_sched_asym_cap_sibling_freq_match_pct;
 unsigned int sysctl_walt_low_latency_task_threshold; /* disabled by default */
 unsigned int sysctl_sched_conservative_pl;
 unsigned int sysctl_sched_min_task_util_for_boost = 51;
@@ -82,6 +80,11 @@ unsigned int sysctl_ed_boost_pct;
 unsigned int sysctl_em_inflate_pct = 100;
 unsigned int sysctl_em_inflate_thres = 1024;
 unsigned int sysctl_sched_heavy_nr;
+unsigned int sysctl_max_freq_partial_halt = FREQ_QOS_MAX_DEFAULT_VALUE;
+unsigned int sysctl_fmax_cap[MAX_CLUSTERS];
+unsigned int sysctl_sched_sbt_pause_cpus;
+unsigned int sysctl_sched_sbt_delay_windows;
+unsigned int high_perf_cluster_freq_cap[MAX_CLUSTERS];
 
 /* range is [1 .. INT_MAX] */
 static int sysctl_task_read_pid = 1;
@@ -138,6 +141,41 @@ static int walt_proc_user_hint_handler(struct ctl_table *table,
 	sched_user_hint_reset_time = jiffies + HZ;
 	walt_irq_work_queue(&walt_migration_irq_work);
 
+unlock:
+	mutex_unlock(&mutex);
+	return ret;
+}
+
+DECLARE_BITMAP(sbt_bitmap, WALT_NR_CPUS);
+
+static int walt_proc_sbt_pause_handler(struct ctl_table *table,
+				       int write, void __user *buffer, size_t *lenp,
+				       loff_t *ppos)
+{
+	int ret = 0;
+	unsigned int old_value;
+	unsigned long bitmask;
+	const unsigned long *bitmaskp = &bitmask;
+	static bool written_once;
+	static DEFINE_MUTEX(mutex);
+
+	mutex_lock(&mutex);
+
+	old_value = sysctl_sched_sbt_pause_cpus;
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (ret || !write || (old_value == sysctl_sched_sbt_pause_cpus))
+		goto unlock;
+
+	if (written_once) {
+		sysctl_sched_sbt_pause_cpus = old_value;
+		goto unlock;
+	}
+
+	bitmask = (unsigned long)sysctl_sched_sbt_pause_cpus;
+	bitmap_copy(sbt_bitmap, bitmaskp, WALT_NR_CPUS);
+	cpumask_copy(&cpus_for_sbt_pause, to_cpumask(sbt_bitmap));
+
+	written_once = true;
 unlock:
 	mutex_unlock(&mutex);
 	return ret;
@@ -609,6 +647,48 @@ unlock_mutex:
 
 	return ret;
 }
+
+int sched_fmax_cap_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *lenp,
+		loff_t *ppos)
+{
+	int ret, i;
+	unsigned int *data = (unsigned int *)table->data;
+	static DEFINE_MUTEX(mutex);
+	int cap_margin_levels = num_sched_clusters;
+	int val[MAX_CLUSTERS];
+	struct ctl_table tmp = {
+		.data	= &val,
+		.maxlen	= sizeof(int) * cap_margin_levels,
+		.mode	= table->mode,
+	};
+
+	if (cap_margin_levels <= 0)
+		return -EINVAL;
+
+	mutex_lock(&mutex);
+
+	if (!write) {
+		ret = proc_dointvec(table, write, buffer, lenp, ppos);
+		goto unlock_mutex;
+	}
+
+	ret = proc_dointvec(&tmp, write, buffer, lenp, ppos);
+	if (ret)
+		goto unlock_mutex;
+
+	for (i = 0; i < cap_margin_levels; i++) {
+		if (val[i] < 0) {
+			ret = -EINVAL;
+			goto unlock_mutex;
+		}
+		data[i] = val[i];
+	}
+unlock_mutex:
+	mutex_unlock(&mutex);
+
+	return ret;
+}
 #endif /* CONFIG_PROC_SYSCTL */
 
 struct ctl_table input_boost_sysctls[] = {
@@ -684,8 +764,8 @@ struct ctl_table walt_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= sched_boost_handler,
-		.extra1		= &neg_three,
-		.extra2		= &three,
+		.extra1		= &neg_four,
+		.extra2		= &four,
 	},
 	{
 		.procname	= "sched_conservative_pl",
@@ -740,15 +820,6 @@ struct ctl_table walt_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= &one_thousand,
-	},
-	{
-		.procname	= "sched_asym_cap_sibling_freq_match_pct",
-		.data		= &sysctl_sched_asym_cap_sibling_freq_match_pct,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= SYSCTL_ONE,
-		.extra2		= &one_hundred,
 	},
 	{
 		.procname	= "sched_coloc_downmigrate_ns",
@@ -1120,6 +1191,47 @@ struct ctl_table walt_table[] = {
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= &walt_max_cpus,
 	},
+	{
+		.procname	= "sched_sbt_pause_cpus",
+		.data		= &sysctl_sched_sbt_pause_cpus,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= walt_proc_sbt_pause_handler,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sched_sbt_delay_windows",
+		.data		= &sysctl_sched_sbt_delay_windows,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sched_max_freq_partial_halt",
+		.data		= &sysctl_max_freq_partial_halt,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sched_fmax_cap",
+		.data		= &sysctl_fmax_cap,
+		.maxlen		= sizeof(unsigned int) * MAX_CLUSTERS,
+		.mode		= 0644,
+		.proc_handler	= sched_fmax_cap_handler,
+	},
+	{
+		.procname	= "sched_high_perf_cluster_freq_cap",
+		.data		= &high_perf_cluster_freq_cap,
+		.maxlen		= sizeof(unsigned int) * MAX_CLUSTERS,
+		.mode		= 0644,
+		.proc_handler	= sched_fmax_cap_handler,
+	},
 	{ }
 };
 
@@ -1146,8 +1258,6 @@ void walt_tunables(void)
 	sysctl_sched_group_upmigrate_pct = 100;
 
 	sysctl_sched_group_downmigrate_pct = 95;
-
-	sysctl_sched_asym_cap_sibling_freq_match_pct = 100;
 
 	sysctl_sched_task_unfilter_period = 100000000;
 
@@ -1176,4 +1286,9 @@ void walt_tunables(void)
 
 	for (i = 0; i < 8; i++)
 		sysctl_input_boost_freq[i] = 0;
+
+	for (i = 0; i < MAX_CLUSTERS; i++) {
+		sysctl_fmax_cap[i] = FREQ_QOS_MAX_DEFAULT_VALUE;
+		high_perf_cluster_freq_cap[i] = FREQ_QOS_MAX_DEFAULT_VALUE;
+	}
 }

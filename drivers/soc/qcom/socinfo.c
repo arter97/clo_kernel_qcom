@@ -333,7 +333,7 @@ struct smem_image_version {
 #define MAX_SOCINFO_ATTRS 50
 /* sysfs attributes */
 #define ATTR_DEFINE(param)      \
-	static DEVICE_ATTR(param, 0644, msm_get_##param, NULL)
+	static DEVICE_ATTR(param, 0444, msm_get_##param, NULL)
 
 /* sysfs attributes for subpart information */
 #define CREATE_PART_FUNCTION(part, part_enum)  \
@@ -344,10 +344,12 @@ struct smem_image_version {
 	{ \
 		u32 *part_info; \
 		int num_parts = 0; \
-		int str_pos = 0, i = 0; \
+		int str_pos = 0, i = 0, ret = 0; \
 		num_parts = socinfo_get_part_count(part_enum); \
 		part_info = kmalloc_array(num_parts, sizeof(*part_info), GFP_KERNEL); \
-		socinfo_get_subpart_info(part_enum, part_info, num_parts); \
+		ret = socinfo_get_subpart_info(part_enum, part_info, num_parts); \
+		if (ret < 0) \
+			return -EINVAL;  \
 		for (i = 0; i < num_parts; i++) { \
 			str_pos += scnprintf(buf+str_pos, PAGE_SIZE-str_pos, "0x%x", \
 					part_info[i]); \
@@ -491,8 +493,12 @@ static const struct soc_id soc_id[] = {
 	{ 350, "SDA632" },
 	{ 351, "SDA450" },
 	{ 356, "SM8250" },
+	{ 362, "SA8155" },
+	{ 367, "SA8155P" },
 	{ 375, "IPQ8070" },
 	{ 376, "IPQ8071" },
+	{ 377, "SA6155P" },
+	{ 384, "SA6155" },
 	{ 389, "IPQ8072A" },
 	{ 390, "IPQ8074A" },
 	{ 391, "IPQ8076A" },
@@ -502,6 +508,7 @@ static const struct soc_id soc_id[] = {
 	{ 396, "IPQ8071A" },
 	{ 402, "IPQ6018" },
 	{ 403, "IPQ6028" },
+	{ 405, "SA8195P" },
 	{ 421, "IPQ6000" },
 	{ 422, "IPQ6010" },
 	{ 425, "SC7180" },
@@ -869,6 +876,9 @@ socinfo_get_subpart_info(enum subset_part_type part,
 	void *info = socinfo;
 	u32 i = 0, count = 0;
 	int part_count = 0;
+
+	if (!part_info)
+		return -EINVAL;
 
 	part_count = socinfo_get_part_count(part);
 	if (part_count <= 0)

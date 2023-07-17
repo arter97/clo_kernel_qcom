@@ -722,10 +722,10 @@ TRACE_EVENT(waltgov_util_update,
 TRACE_EVENT(waltgov_next_freq,
 	    TP_PROTO(unsigned int cpu, unsigned long util, unsigned long max, unsigned int raw_freq,
 		     unsigned int freq, unsigned int policy_min_freq, unsigned int policy_max_freq,
-		     unsigned int cached_raw_freq, bool need_freq_update, unsigned int driving_cpu,
-		     unsigned int reason),
+		     unsigned int cached_raw_freq, bool need_freq_update, bool thermal_isolated,
+		     unsigned int driving_cpu, unsigned int reason),
 	    TP_ARGS(cpu, util, max, raw_freq, freq, policy_min_freq, policy_max_freq,
-		    cached_raw_freq, need_freq_update, driving_cpu, reason),
+		    cached_raw_freq, need_freq_update, thermal_isolated, driving_cpu, reason),
 	    TP_STRUCT__entry(
 		    __field(unsigned int, cpu)
 		    __field(unsigned long, util)
@@ -736,6 +736,7 @@ TRACE_EVENT(waltgov_next_freq,
 		    __field(unsigned int, policy_max_freq)
 		    __field(unsigned int, cached_raw_freq)
 		    __field(bool, need_freq_update)
+		    __field(bool, thermal_isolated)
 		    __field(unsigned int, rt_util)
 		    __field(unsigned int, driving_cpu)
 		    __field(unsigned int, reason)
@@ -750,11 +751,12 @@ TRACE_EVENT(waltgov_next_freq,
 		    __entry->policy_max_freq	= policy_max_freq;
 		    __entry->cached_raw_freq	= cached_raw_freq;
 		    __entry->need_freq_update	= need_freq_update;
+		    __entry->thermal_isolated	= thermal_isolated;
 		    __entry->rt_util		= cpu_util_rt(cpu_rq(cpu));
 		    __entry->driving_cpu	= driving_cpu;
 		    __entry->reason		= reason;
 	    ),
-	    TP_printk("cpu=%u util=%lu max=%lu raw_freq=%lu freq=%u policy_min_freq=%u policy_max_freq=%u cached_raw_freq=%u need_update=%d rt_util=%u driv_cpu=%u reason=0x%x",
+	    TP_printk("cpu=%u util=%lu max=%lu raw_freq=%lu freq=%u policy_min_freq=%u policy_max_freq=%u cached_raw_freq=%u need_update=%d thermal_isolated=%d rt_util=%u driv_cpu=%u reason=0x%x",
 		      __entry->cpu,
 		      __entry->util,
 		      __entry->max,
@@ -764,6 +766,7 @@ TRACE_EVENT(waltgov_next_freq,
 		      __entry->policy_max_freq,
 		      __entry->cached_raw_freq,
 		      __entry->need_freq_update,
+		      __entry->thermal_isolated,
 		      __entry->rt_util,
 		      __entry->driving_cpu,
 		      __entry->reason)
@@ -1126,6 +1129,8 @@ TRACE_EVENT(sched_task_util,
 		__field(bool,		low_latency)
 		__field(bool,		iowaited)
 		__field(int,		load_boost)
+		__field(bool,		sync_state)
+		__field(int,		pipeline_cpu)
 	),
 
 	TP_fast_assign(
@@ -1153,16 +1158,20 @@ TRACE_EVENT(sched_task_util,
 			((struct walt_task_struct *) p->android_vendor_data1)->iowaited;
 		__entry->load_boost		=
 			((struct walt_task_struct *) p->android_vendor_data1)->load_boost;
+		__entry->sync_state		= !cluster_partial_halted();
+		__entry->pipeline_cpu		=
+			((struct walt_task_struct *) p->android_vendor_data1)->pipeline_cpu;
 	),
 
-	TP_printk("pid=%d comm=%s util=%lu prev_cpu=%d candidates=%#lx best_energy_cpu=%d sync=%d need_idle=%d fastpath=%d placement_boost=%d latency=%llu stune_boosted=%d is_rtg=%d rtg_skip_min=%d start_cpu=%d unfilter=%u affinity=%lx task_boost=%d low_latency=%d iowaited=%d load_boost=%d",
+	TP_printk("pid=%d comm=%s util=%lu prev_cpu=%d candidates=%#lx best_energy_cpu=%d sync=%d need_idle=%d fastpath=%d placement_boost=%d latency=%llu stune_boosted=%d is_rtg=%d rtg_skip_min=%d start_cpu=%d unfilter=%u affinity=%lx task_boost=%d low_latency=%d iowaited=%d load_boost=%d sync_state=%d pipeline_cpu=%d",
 		__entry->pid, __entry->comm, __entry->util, __entry->prev_cpu,
 		__entry->candidates, __entry->best_energy_cpu, __entry->sync,
 		__entry->need_idle, __entry->fastpath, __entry->placement_boost,
 		__entry->latency, __entry->uclamp_boosted,
 		__entry->is_rtg, __entry->rtg_skip_min, __entry->start_cpu,
 		__entry->unfilter, __entry->cpus_allowed, __entry->task_boost,
-		__entry->low_latency, __entry->iowaited, __entry->load_boost)
+		__entry->low_latency, __entry->iowaited, __entry->load_boost,
+		__entry->sync_state, __entry->pipeline_cpu)
 );
 
 /*
@@ -1523,6 +1532,76 @@ TRACE_EVENT(update_cpu_capacity,
 			__entry->rq_cpu_capacity_orig)
 );
 
+TRACE_EVENT(sched_qos_freq_request,
+
+	TP_PROTO(int cpu, s32 max_freq, enum qos_clients client, int ret,
+		enum qos_request_type type),
+
+	TP_ARGS(cpu, max_freq, client, ret, type),
+
+	TP_STRUCT__entry(
+		__field(int, cpu)
+		__field(s32, max_freq)
+		__field(int, client)
+		__field(int, ret)
+		__field(int, type)
+	),
+
+	TP_fast_assign(
+		__entry->cpu = cpu;
+		__entry->max_freq = max_freq;
+		__entry->client = client;
+		__entry->ret = ret;
+		__entry->type = type;
+	),
+
+	TP_printk("cpu=%d max_freq=%d client=%d ret=%d type=%d",
+			__entry->cpu, __entry->max_freq,
+			__entry->client, __entry->ret,
+			__entry->type)
+);
+
+TRACE_EVENT(sched_fmax_uncap,
+
+	TP_PROTO(int nr_big, u64 window_start, u32 wakeup_ctr_sum, bool fmax_uncap_load_detected,
+		u64 fmax_uncap_timestamp),
+
+	TP_ARGS(nr_big, window_start, wakeup_ctr_sum, fmax_uncap_load_detected,
+		fmax_uncap_timestamp),
+
+	TP_STRUCT__entry(
+		__field(int, nr_big)
+		__field(u64, ws)
+		__field(u32, wakeup_ctr_sum)
+		__field(bool, load_detected)
+		__field(u64, uncap_ts)
+		__field(unsigned int, fmax_cap_0)
+		__field(unsigned int, fmax_cap_1)
+		__field(unsigned int, fmax_cap_2)
+		__field(unsigned int, fmax_cap_3)
+	),
+
+	TP_fast_assign(
+		__entry->nr_big = nr_big;
+		__entry->ws = window_start;
+		__entry->wakeup_ctr_sum	= wakeup_ctr_sum;
+		__entry->load_detected = fmax_uncap_load_detected;
+		__entry->uncap_ts = fmax_uncap_timestamp;
+		__entry->fmax_cap_0 = sysctl_fmax_cap[0];
+		__entry->fmax_cap_1 = sysctl_fmax_cap[1];
+		__entry->fmax_cap_2 = sysctl_fmax_cap[2];
+		__entry->fmax_cap_3 = sysctl_fmax_cap[3];
+	),
+
+	TP_printk("nr_big=%d ws=%llu wakeup_ctr_sum=%u load_detected=%d uncap_ts=%llu fmax_cap_0=%u fmax_cap_1=%u fmax_cap_2=%u fmax_cap_3=%u",
+			__entry->nr_big, __entry->ws,
+			__entry->wakeup_ctr_sum, __entry->load_detected,
+			__entry->uncap_ts,
+			__entry->fmax_cap_0,
+			__entry->fmax_cap_1,
+			__entry->fmax_cap_2,
+			__entry->fmax_cap_3)
+);
 #endif /* _TRACE_WALT_H */
 
 #undef TRACE_INCLUDE_PATH

@@ -21,12 +21,14 @@
 #include "walt.h"
 #include "trace.h"
 
-/* mask of all CPUs with any full or partial pause claim outstanding */
+/* mask of all CPUs with a fully pause claim outstanding */
 static cpumask_t cpus_paused_by_us = { CPU_BITS_NONE };
 
-/* mask of the just the CPUs with a partial pause claim outstanding */
-/* this must always be a subset of cpus_paused_by_us */
+/* mask of all CPUS with a partial pause claim outstanding */
 static cpumask_t cpus_part_paused_by_us = { CPU_BITS_NONE };
+
+/* global to indicate which cpus to pause for sbt */
+cpumask_t cpus_for_sbt_pause = { CPU_BITS_NONE };
 
 struct cluster_data {
 	bool			inited;
@@ -45,6 +47,7 @@ struct cluster_data {
 	unsigned int		max_nr;
 	unsigned int		nr_assist;
 	unsigned int		nr_busy;
+	unsigned int		nr_big;
 	s64			need_ts;
 	struct list_head	lru;
 	bool			enable;
@@ -100,6 +103,7 @@ static unsigned int get_assist_active_cpu_count(const struct cluster_data *clust
 static unsigned int active_cpu_count_from_mask(const cpumask_t *cpus);
 static void __ref do_core_ctl(void);
 
+cpumask_t part_haltable_cpus = { CPU_BITS_NONE };
 /* ========================= sysfs interface =========================== */
 
 static ssize_t store_min_cpus(struct cluster_data *state,
@@ -131,6 +135,11 @@ static ssize_t store_min_partial_cpus(struct cluster_data *state,
 
 	state->min_partial_cpus = min(val, state->num_cpus);
 	sysfs_param_changed(state);
+
+	if (state->min_partial_cpus)
+		cpumask_or(&part_haltable_cpus, &part_haltable_cpus, &state->cpu_mask);
+	else
+		cpumask_andnot(&part_haltable_cpus, &part_haltable_cpus, &state->cpu_mask);
 
 	return count;
 }
@@ -311,7 +320,9 @@ static unsigned int cluster_paused_cpus(const struct cluster_data *cluster)
 {
 	cpumask_t cluster_paused_cpus;
 
-	cpumask_and(&cluster_paused_cpus, &cluster->cpu_mask, &cpus_paused_by_us);
+	cpumask_or(&cluster_paused_cpus, &cpus_paused_by_us, &cpus_part_paused_by_us);
+	cpumask_and(&cluster_paused_cpus, &cluster->cpu_mask, &cluster_paused_cpus);
+
 	return cpumask_weight(&cluster_paused_cpus);
 }
 
@@ -928,7 +939,7 @@ static int compute_cluster_nr_busy(int index)
 	return nr_busy;
 }
 
-static void update_running_avg(void)
+static void update_running_avg(u64 window_start, u32 wakeup_ctr_sum)
 {
 	struct cluster_data *cluster;
 	unsigned int index = 0;
@@ -958,6 +969,7 @@ static void update_running_avg(void)
 		nr_assist_active = get_assist_active_cpu_count(cluster);
 
 		if (!cpumask_intersects(&cluster->assist_cpu_mask, &cpus_paused_by_us) &&
+		    !cpumask_intersects(&cluster->assist_cpu_mask, &cpus_part_paused_by_us) &&
 		    nr_assist_need + nr_misfit_assist_need > nr_assist_active)
 			cluster->nr_assist = nr_assist_need +
 					nr_misfit_assist_need - nr_assist_active;
@@ -972,12 +984,14 @@ static void update_running_avg(void)
 					nr_misfit_assist_need, cluster->nr_assist,
 					cluster->nr_busy);
 
-		big_avg += cluster_real_big_tasks(index);
+		cluster->nr_big = cluster_real_big_tasks(index);
+		big_avg += cluster->nr_big;
 	}
 	spin_unlock_irqrestore(&state_lock, flags);
 
 	last_nr_big = big_avg;
 	walt_rotation_checkpoint(big_avg);
+	fmax_uncap_checkpoint(big_avg, window_start, wakeup_ctr_sum);
 }
 
 #define MAX_NR_THRESHOLD	4
@@ -1248,6 +1262,58 @@ static bool core_ctl_check_masks_set(void)
 
 	return all_masks_set;
 }
+
+/* is the system in a single-big-thread case? */
+static inline bool is_sbt(void)
+{
+	struct cluster_data *cluster = &cluster_state[MAX_CLUSTERS - 1];
+
+	if (last_nr_big == 1 && cluster->nr_big == 1)
+		return true;
+
+	return false;
+}
+
+/**
+ * sbt_ctl_check
+ *
+ * Determine if the system should enter or
+ * exit single-big-thread mode and ensure
+ * the cpus are paused when entering.
+ *
+ * note: depends on update_running_average
+ * note: must be called every window rollover
+ */
+void sbt_ctl_check(void)
+{
+	static bool prev_is_sbt;
+	static int prev_is_sbt_windows;
+	bool now_is_sbt = is_sbt();
+
+	/* if there are cpus to adjust */
+	if (cpumask_weight(&cpus_for_sbt_pause) != 0) {
+
+		if (prev_is_sbt == now_is_sbt) {
+			if (prev_is_sbt_windows < sysctl_sched_sbt_delay_windows)
+				prev_is_sbt_windows = sysctl_sched_sbt_delay_windows;
+			return;
+		}
+
+		if (now_is_sbt && prev_is_sbt_windows-- > 0)
+			return;
+
+		if (!prev_is_sbt && now_is_sbt)
+			/*sbt entry*/
+			walt_pause_cpus(&cpus_for_sbt_pause, PAUSE_SBT);
+		else if (prev_is_sbt && !now_is_sbt)
+			/* sbt exit */
+			walt_resume_cpus(&cpus_for_sbt_pause, PAUSE_SBT);
+
+		prev_is_sbt_windows = sysctl_sched_sbt_delay_windows;
+		prev_is_sbt = now_is_sbt;
+	}
+}
+
 /*
  * sched_get_nr_running_avg will wipe out previous statistics and
  * update it to the values computed since the last call.
@@ -1256,7 +1322,7 @@ static bool core_ctl_check_masks_set(void)
  * window based. Therefore core_ctl_check must only be called from
  * window rollover, or walt_irq_work for not migration.
  */
-void core_ctl_check(u64 window_start)
+void core_ctl_check(u64 window_start, u32 wakeup_ctr_sum)
 {
 	int cpu;
 	struct cpu_data *c;
@@ -1291,7 +1357,7 @@ void core_ctl_check(u64 window_start)
 	}
 	spin_unlock_irqrestore(&state_lock, flags);
 
-	update_running_avg();
+	update_running_avg(window_start, wakeup_ctr_sum);
 
 	for_each_cluster(cluster, index)
 		wakeup |= eval_need(cluster);
@@ -1299,6 +1365,9 @@ void core_ctl_check(u64 window_start)
 	if (wakeup)
 		do_core_ctl();
 	core_ctl_call_notifier();
+
+	/* independent check from eval_need */
+	sbt_ctl_check();
 }
 
 /* must be called with state_lock held */
@@ -1327,6 +1396,7 @@ static void try_to_partial_pause(struct cluster_data *cluster,
 		if (cpumask_test_cpu(c->cpu, pause_cpus)) {
 			if (!cpumask_test_cpu(c->cpu, &cpus_part_paused_by_us)) {
 				cpumask_set_cpu(c->cpu, part_pause_cpus);
+				cpumask_clear_cpu(c->cpu, pause_cpus);
 				num_cpus--;
 				move_cpu_lru(c);
 			}
@@ -1438,7 +1508,8 @@ static int __try_to_resume(struct cluster_data *cluster, unsigned int need,
 		if (!num_cpus--)
 			break;
 
-		if (!cpumask_test_cpu(c->cpu, &cpus_paused_by_us))
+		if (!cpumask_test_cpu(c->cpu, &cpus_paused_by_us) &&
+		    !cpumask_test_cpu(c->cpu, &cpus_part_paused_by_us))
 			continue;
 		if (is_active(c) ||
 			(!force && c->not_preferred))
@@ -1501,17 +1572,12 @@ static void core_ctl_pause_cpus(struct cpumask *cpus_to_pause, struct cpumask *c
 	cpumask_copy(&saved_cpus, cpus_to_part_pause);
 
 	if (cpumask_any(cpus_to_part_pause) < nr_cpu_ids) {
-		if (walt_partial_pause_cpus(cpus_to_part_pause, PAUSE_CORE_CTL) < 0) {
+		if (walt_partial_pause_cpus(cpus_to_part_pause, PAUSE_CORE_CTL) < 0)
 			pr_debug("core_ctl pause failed cpus=%*pbl part_paused_by_us=%*pbl\n",
 				 cpumask_pr_args(cpus_to_part_pause),
 				 cpumask_pr_args(&cpus_part_paused_by_us));
-		} else {
-			/* track all cpus paused in any way */
-			cpumask_or(&cpus_paused_by_us, &cpus_paused_by_us, &saved_cpus);
-
-			/* track all cpus that are partially paused */
+		else
 			cpumask_or(&cpus_part_paused_by_us, &cpus_part_paused_by_us, &saved_cpus);
-		}
 	}
 
 	/* only fully pause cpus that are not currently paused by us, including not currently
@@ -1551,23 +1617,15 @@ static void core_ctl_resume_cpus(struct cpumask *cpus_to_unpause,
 	cpumask_copy(&saved_cpus, cpus_to_part_unpause);
 
 	if (cpumask_any(cpus_to_part_unpause) < nr_cpu_ids) {
-		if (walt_partial_resume_cpus(cpus_to_part_unpause, PAUSE_CORE_CTL) < 0) {
+		if (walt_partial_resume_cpus(cpus_to_part_unpause, PAUSE_CORE_CTL) < 0)
 			pr_debug("core_ctl resume failed cpus=%*pbl part_paused_by_us=%*pbl\n",
 				 cpumask_pr_args(cpus_to_part_unpause),
 				 cpumask_pr_args(&cpus_part_paused_by_us));
-		} else {
-			/* remove part resumed cpus from part paused and total paused masks */
+		else
 			cpumask_andnot(&cpus_part_paused_by_us,
 				       &cpus_part_paused_by_us, &saved_cpus);
-
-			cpumask_andnot(&cpus_paused_by_us,
-				       &cpus_paused_by_us, &saved_cpus);
-		}
 	}
 
-	/* do not unpause cpus that are not paused by us, including cpus that were just unpaused
-	 * above, and removed from the cpus_paused_by_us_mask
-	 */
 	cpumask_and(cpus_to_unpause, cpus_to_unpause, &cpus_paused_by_us);
 	cpumask_copy(&saved_cpus, cpus_to_unpause);
 
@@ -1694,6 +1752,7 @@ static int cluster_init(const struct cpumask *mask)
 	cluster->enable = false;
 	cluster->nr_not_preferred_cpus = 0;
 	cluster->strict_nrrun = 0;
+	cluster->nr_big = 0;
 
 	/*
 	 * set all cpus in the cluster.  this is an invalid state

@@ -63,6 +63,7 @@ struct waltgov_policy {
 
 	bool			limits_changed;
 	bool			need_freq_update;
+	bool			thermal_isolated;
 };
 
 struct waltgov_cpu {
@@ -121,6 +122,14 @@ static bool waltgov_up_down_rate_limit(struct waltgov_policy *wg_policy, u64 tim
 	return false;
 }
 
+static void __waltgov_update_next_freq(struct waltgov_policy *wg_policy,
+		u64 time, unsigned int next_freq, unsigned int raw_freq)
+{
+	wg_policy->cached_raw_freq = raw_freq;
+	wg_policy->next_freq = next_freq;
+	wg_policy->last_freq_update_time = time;
+}
+
 static bool waltgov_update_next_freq(struct waltgov_policy *wg_policy, u64 time,
 					unsigned int next_freq,
 					unsigned int raw_freq)
@@ -133,9 +142,7 @@ static bool waltgov_update_next_freq(struct waltgov_policy *wg_policy, u64 time,
 		return false;
 	}
 
-	wg_policy->cached_raw_freq = raw_freq;
-	wg_policy->next_freq = next_freq;
-	wg_policy->last_freq_update_time = time;
+	__waltgov_update_next_freq(wg_policy, time, next_freq, raw_freq);
 
 	return true;
 }
@@ -243,12 +250,36 @@ static unsigned int get_next_freq(struct waltgov_policy *wg_policy,
 	struct waltgov_cpu *wg_driv_cpu = &per_cpu(waltgov_cpu, wg_policy->driving_cpu);
 	struct walt_sched_cluster *cluster;
 	bool skip = false;
+	bool thermal_isolated_now = cpus_halted_by_client(
+			wg_policy->policy->related_cpus, PAUSE_THERMAL);
+
+	if (thermal_isolated_now) {
+		if (!wg_policy->thermal_isolated) {
+			/* Entering thermal isolation */
+			wg_policy->thermal_isolated = true;
+			wg_policy->policy->cached_resolved_idx = 0;
+			final_freq = wg_policy->policy->freq_table[0].frequency;
+			__waltgov_update_next_freq(wg_policy, time, final_freq, final_freq);
+		} else {
+			final_freq = 0;  /* no need to change freq, i.e. continue with min freq */
+		}
+		raw_freq = final_freq;
+		freq = raw_freq;
+		goto out;
+	} else {
+		if (wg_policy->thermal_isolated) {
+			/* Exiting thermal isolation*/
+			wg_policy->thermal_isolated = false;
+			wg_policy->need_freq_update = true;
+		}
+	}
 
 	raw_freq = walt_map_util_freq(util, wg_policy, max, wg_driv_cpu->cpu);
 	freq = raw_freq;
 
 	cluster = cpu_cluster(policy->cpu);
-	if (cpumask_intersects(&cluster->cpus, cpu_partial_halt_mask))
+	if (cpumask_intersects(&cluster->cpus, cpu_partial_halt_mask) &&
+			cluster_partial_halted())
 		skip = true;
 
 	if (wg_policy->tunables->adaptive_high_freq && !skip) {
@@ -261,20 +292,26 @@ static unsigned int get_next_freq(struct waltgov_policy *wg_policy,
 		}
 	}
 
-	trace_waltgov_next_freq(policy->cpu, util, max, raw_freq, freq, policy->min, policy->max,
-				wg_policy->cached_raw_freq, wg_policy->need_freq_update,
-				wg_driv_cpu->cpu, wg_driv_cpu->reasons);
-
 	if (wg_policy->cached_raw_freq && freq == wg_policy->cached_raw_freq &&
-		!wg_policy->need_freq_update)
-		return 0;
+		!wg_policy->need_freq_update) {
+		final_freq = 0;
+		goto out;
+	}
 
 	wg_policy->need_freq_update = false;
 
 	final_freq = cpufreq_driver_resolve_freq(policy, freq);
 
-	if (!waltgov_update_next_freq(wg_policy, time, final_freq, freq))
-		return 0;
+	if (!waltgov_update_next_freq(wg_policy, time, final_freq, freq)) {
+		final_freq = 0;
+		goto out;
+	}
+out:
+	trace_waltgov_next_freq(policy->cpu, util, max, raw_freq, freq,
+				policy->min, policy->max,
+				wg_policy->cached_raw_freq, wg_policy->need_freq_update,
+				wg_policy->thermal_isolated,
+				wg_driv_cpu->cpu, wg_driv_cpu->reasons);
 
 	return final_freq;
 }
@@ -319,14 +356,16 @@ static void waltgov_walt_adjust(struct waltgov_cpu *wg_cpu, unsigned long cpu_ut
 	bool employ_ed_boost = wg_cpu->walt_load.ed_active && sysctl_ed_boost_pct;
 	unsigned long pl = wg_cpu->walt_load.pl;
 
-	if (is_rtg_boost && !cpu_should_help_mincpus(wg_cpu->cpu))
+	if (is_rtg_boost && (!cpumask_test_cpu(wg_cpu->cpu, cpu_partial_halt_mask) ||
+				!cluster_partial_halted()))
 		max_and_reason(util, wg_policy->rtg_boost_util, wg_cpu, CPUFREQ_REASON_RTG_BOOST);
 
 	is_hiload = (cpu_util >= mult_frac(wg_policy->avg_cap,
 					   wg_policy->tunables->hispeed_load,
 					   100));
 
-	if (cpu_should_help_mincpus(wg_cpu->cpu))
+	if (cpumask_test_cpu(wg_cpu->cpu, cpu_partial_halt_mask) &&
+			cluster_partial_halted())
 		is_hiload = false;
 
 	if (is_hiload && !is_migration)
@@ -352,7 +391,7 @@ static inline unsigned long target_util(struct waltgov_policy *wg_policy,
 
 	util = freq_to_util(wg_policy, freq);
 
-	if (is_min_cluster_cpu(wg_policy->policy->cpu) &&
+	if (is_min_possible_cluster_cpu(wg_policy->policy->cpu) &&
 		util >= wg_policy->tunables->target_load_thresh)
 		util = mult_frac(util, 94, 100);
 	else
@@ -1013,9 +1052,9 @@ static int waltgov_init(struct cpufreq_policy *policy)
 	tunables->target_load_thresh = DEFAULT_TARGET_LOAD_THRESH;
 	tunables->target_load_shift = DEFAULT_TARGET_LOAD_SHIFT;
 
-	if (is_min_cluster_cpu(policy->cpu))
+	if (is_min_possible_cluster_cpu(policy->cpu))
 		tunables->rtg_boost_freq = DEFAULT_SILVER_RTG_BOOST_FREQ;
-	else if (is_max_cluster_cpu(policy->cpu))
+	else if (is_max_possible_cluster_cpu(policy->cpu))
 		tunables->rtg_boost_freq = DEFAULT_PRIME_RTG_BOOST_FREQ;
 	else
 		tunables->rtg_boost_freq = DEFAULT_GOLD_RTG_BOOST_FREQ;
@@ -1130,18 +1169,19 @@ static void waltgov_limits(struct cpufreq_policy *policy)
 		mutex_unlock(&wg_policy->work_lock);
 	} else {
 		raw_spin_lock_irqsave(&wg_policy->update_lock, flags);
-		freq = policy->cur;
-		now = walt_sched_clock();
+		if (!wg_policy->thermal_isolated) {
+			freq = policy->cur;
+			now = walt_sched_clock();
+			/*
+			 * cpufreq_driver_resolve_freq() has a clamp, so we do not need
+			 * to do any sort of additional validation here.
+			 */
+			final_freq = cpufreq_driver_resolve_freq(policy, freq);
 
-		/*
-		 * cpufreq_driver_resolve_freq() has a clamp, so we do not need
-		 * to do any sort of additional validation here.
-		 */
-		final_freq = cpufreq_driver_resolve_freq(policy, freq);
-
-		if (waltgov_update_next_freq(wg_policy, now, final_freq,
-			final_freq)) {
-			waltgov_fast_switch(wg_policy, now, final_freq);
+			if (waltgov_update_next_freq(wg_policy, now, final_freq,
+				final_freq)) {
+				waltgov_fast_switch(wg_policy, now, final_freq);
+			}
 		}
 		raw_spin_unlock_irqrestore(&wg_policy->update_lock, flags);
 	}

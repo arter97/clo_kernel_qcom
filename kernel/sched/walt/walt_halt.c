@@ -260,6 +260,27 @@ static int __ref try_drain_rqs(void *data)
 	return 0;
 }
 
+void restrict_cpus_and_freq(struct cpumask *cpus)
+{
+	s32 max_freq_val;
+	struct cpumask restrict_cpus;
+	int cpu = 0;
+
+	cpumask_copy(&restrict_cpus, cpus);
+
+	if (cpumask_intersects(cpus, cpu_partial_halt_mask) &&
+			!cpumask_intersects(cpus, cpu_halt_mask) &&
+			cluster_partial_halted()) {
+		max_freq_val = (s32)sysctl_max_freq_partial_halt;
+	} else {
+		max_freq_val = FREQ_QOS_MAX_DEFAULT_VALUE;
+		for_each_cpu(cpu, cpus)
+			cpumask_or(&restrict_cpus, &restrict_cpus, &(cpu_cluster(cpu)->cpus));
+	}
+
+	add_freq_qos_request(restrict_cpus, max_freq_val, QOS_PARTIAL_HALT, MAX_REQUEST);
+}
+
 struct task_struct *walt_drain_thread;
 
 static int halt_cpus(struct cpumask *cpus, enum pause_type type)
@@ -292,6 +313,8 @@ static int halt_cpus(struct cpumask *cpus, enum pause_type type)
 		/* guarantee mask written at this time */
 		wmb();
 	}
+
+	restrict_cpus_and_freq(cpus);
 
 	/* migrate tasks off the cpu */
 	if (type == HALT) {
@@ -333,6 +356,8 @@ static int start_cpus(struct cpumask *cpus, enum pause_type type)
 		 */
 		walt_smp_call_newidle_balance(cpu);
 	}
+
+	restrict_cpus_and_freq(cpus);
 
 	trace_halt_cpus(cpus, start_time, 0, 0);
 
@@ -460,6 +485,21 @@ int walt_partial_resume_cpus(struct cpumask *cpus, enum pause_client client)
 }
 EXPORT_SYMBOL(walt_partial_resume_cpus);
 
+/* return true if the requested client has fully halted one of the cpus */
+bool cpus_halted_by_client(struct cpumask *cpus, enum pause_client client)
+{
+	struct halt_cpu_state *halt_cpu_state;
+	int cpu;
+
+	for_each_cpu(cpu, cpus) {
+		halt_cpu_state = per_cpu_ptr(&halt_state, cpu);
+		if ((bool)(halt_cpu_state->client_vote_mask[HALT] & client))
+			return true;
+	}
+
+	return false;
+}
+
 static void android_rvh_get_nohz_timer_target(void *unused, int *cpu, bool *done)
 {
 	int i, default_cpu = -1;
@@ -542,7 +582,11 @@ static void android_rvh_set_cpus_allowed_by_task(void *unused,
 
 		/* remove halted cpus from the valid mask, and store locally */
 		cpumask_andnot(&allowed_cpus, cpu_valid_mask, cpu_halt_mask);
-		*dest_cpu = cpumask_any_and_distribute(&allowed_cpus, new_mask);
+		cpumask_and(&allowed_cpus, &allowed_cpus, new_mask);
+
+		/* do not modify dest_cpu if there are no cpus to choose from */
+		if (!cpumask_empty(&allowed_cpus))
+			*dest_cpu = cpumask_any_and_distribute(&allowed_cpus, new_mask);
 	}
 }
 
@@ -574,7 +618,7 @@ static void android_rvh_is_cpu_allowed(void *unused, struct task_struct *p, int 
 		return;
 
 	if (cpumask_test_cpu(cpu, cpu_halt_mask)) {
-		cpumask_t cpus_to_avoid;
+		cpumask_t cpus_allowed;
 
 		/* default reject for any halted cpu */
 		*allowed = false;
@@ -585,21 +629,31 @@ static void android_rvh_is_cpu_allowed(void *unused, struct task_struct *p, int 
 			return;
 		}
 
-		cpumask_complement(&cpus_to_avoid, cpu_active_mask);
-		cpumask_or(&cpus_to_avoid, &cpus_to_avoid, cpu_halt_mask);
+		/*
+		 * for cfs threads, active cpus in the affinity are allowed
+		 * but halted cpus are not allowed
+		 */
+		cpumask_and(&cpus_allowed, cpu_active_mask, p->cpus_ptr);
+		cpumask_andnot(&cpus_allowed, &cpus_allowed, cpu_halt_mask);
 
 		if (!(p->flags & PF_KTHREAD)) {
-			if (cpumask_weight(&cpus_to_avoid) == WALT_NR_CPUS) {
-				/* all cpus are inactive or halted. allow for userspace threads */
+			if (cpumask_empty(&cpus_allowed)) {
+				/*
+				 * All affined cpus are inactive or halted.
+				 * Allow this cpu for user threads
+				 */
 				*allowed = true;
 			}
 			return;
 		}
 
-		/* kthreads. extend avoided cpus to include the dying mask */
-		cpumask_or(&cpus_to_avoid, &cpus_to_avoid, cpu_dying_mask);
-		if (cpumask_weight(&cpus_to_avoid) == WALT_NR_CPUS) {
-			/* all cpus inactive or halted or dying. allow for kthreads */
+		/* for kthreads, dying cpus are not allowed */
+		cpumask_andnot(&cpus_allowed, &cpus_allowed, cpu_dying_mask);
+		if (cpumask_empty(&cpus_allowed)) {
+			/*
+			 * All affined cpus inactive or halted or dying.
+			 * Allow this cpu for kthreads
+			 */
 			*allowed = true;
 		}
 	}

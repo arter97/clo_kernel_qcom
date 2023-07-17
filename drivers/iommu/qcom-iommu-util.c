@@ -337,6 +337,24 @@ int qcom_iommu_get_fault_ids(struct iommu_domain *domain,
 }
 EXPORT_SYMBOL(qcom_iommu_get_fault_ids);
 
+int qcom_skip_tlb_management(struct device *dev, bool skip)
+{
+	struct qcom_iommu_ops *ops;
+	struct iommu_domain *domain;
+
+	domain = iommu_get_domain_for_dev(dev);
+	if (!domain)
+		return -EINVAL;
+
+	ops = to_qcom_iommu_ops(domain->ops);
+	if (unlikely(ops->skip_tlb_management == NULL))
+		return -EINVAL;
+
+	ops->skip_tlb_management(domain, skip);
+	return 0;
+}
+EXPORT_SYMBOL(qcom_skip_tlb_management);
+
 int qcom_iommu_get_msi_size(struct device *dev, u32 *msi_size)
 {
 	struct device_node *np = qcom_iommu_group_parse_phandle(dev);
@@ -794,6 +812,10 @@ out_undo:
 	}
 	return ret;
 }
+#if IS_MODULE(CONFIG_QCOM_IOMMU_UTIL)
 module_init(qcom_iommu_util_init);
+#else
+arch_initcall_sync(qcom_iommu_util_init);
+#endif
 
 MODULE_LICENSE("GPL v2");
