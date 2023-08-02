@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/qcom_scm.h>
+#include <linux/syscore_ops.h>
 
 #define MSM_DUMP_TABLE_VERSION		MSM_DUMP_MAKE_VERSION(2, 0)
 
@@ -912,11 +913,22 @@ int msm_dump_data_register_nominidump(enum msm_dump_table_ids id,
 }
 EXPORT_SYMBOL(msm_dump_data_register_nominidump);
 
+static void __iomem *imem_base;
+#ifdef CONFIG_HIBERNATION
+static void memory_dump_syscore_resume(void)
+{
+	memcpy_toio(imem_base, &memdump.table_phys, sizeof(memdump.table_phys));
+}
+
+static struct syscore_ops memory_dump_syscore_ops = {
+	.resume = memory_dump_syscore_resume,
+};
+#endif
+
 #define MSM_DUMP_TOTAL_SIZE_OFFSET	0x724
 static int init_memdump_imem_area(size_t size)
 {
 	struct device_node *np;
-	void __iomem *imem_base;
 
 	np = of_find_compatible_node(NULL, NULL,
 				     "qcom,msm-imem-mem_dump_table");
@@ -940,7 +952,9 @@ static int init_memdump_imem_area(size_t size)
 	mb();
 	pr_info("MSM Memory Dump base table set up in IMEM\n");
 
+#ifndef CONFIG_HIBERNATION
 	iounmap(imem_base);
+#endif
 	return 0;
 }
 
@@ -965,6 +979,10 @@ static int init_memory_dump(void *dump_vaddr, phys_addr_t phys_addr)
 		return ret;
 	}
 	pr_info("MSM Memory Dump apps data table set up\n");
+
+#ifdef CONFIG_HIBERNATION
+	register_syscore_ops(&memory_dump_syscore_ops);
+#endif
 
 	return 0;
 }
