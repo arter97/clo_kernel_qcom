@@ -3987,6 +3987,7 @@ out:
 /**
  * __walt_irq_work_locked() - common function to process work
  * @is_migration: if true, performing migration work, else rollover
+ * @is_asym_migration: if true, performing migration involving an asym cap sibling
  * @lock_cpus: mask of the cpus involved in the operation.
  *
  * In rq locked context, update the cluster group load and find
@@ -3998,7 +3999,8 @@ out:
  * and for migrations it will include the cpus from the two clusters
  * involved in the migration.
  */
-static inline void __walt_irq_work_locked(bool is_migration, struct cpumask *lock_cpus)
+static inline void __walt_irq_work_locked(bool is_migration, bool is_asym_migration,
+				struct cpumask *lock_cpus)
 {
 	struct walt_sched_cluster *cluster;
 	struct rq *rq;
@@ -4066,9 +4068,10 @@ static inline void __walt_irq_work_locked(bool is_migration, struct cpumask *loc
 			if (is_migration) {
 				if (wrq->notif_pending) {
 					wrq->notif_pending = false;
-
 					wflag |= WALT_CPUFREQ_IC_MIGRATION;
 				}
+				if (is_asym_migration)
+					wflag |= WALT_CPUFREQ_ASYM_FIXUP;
 			} else {
 				wflag |= WALT_CPUFREQ_ROLLOVER;
 			}
@@ -4204,7 +4207,7 @@ static void walt_irq_work(struct irq_work *irq_work)
 	struct walt_rq *wrq;
 	int level = 0;
 	int cpu;
-	bool is_migration = false;
+	bool is_migration = false, is_asym_migration = false;
 	u32 wakeup_ctr_sum = 0;
 
 	if (irq_work == &walt_migration_irq_work)
@@ -4222,6 +4225,12 @@ static void walt_irq_work(struct irq_work *irq_work)
 		 */
 		if (cpumask_empty(&lock_cpus))
 			return;
+
+		if (!cluster_partial_halted() &&
+				cpumask_intersects(&lock_cpus, &asym_cap_sibling_cpus)) {
+			cpumask_or(&lock_cpus, &lock_cpus, &asym_cap_sibling_cpus);
+			is_asym_migration = true;
+		}
 	}
 
 	for_each_cpu(cpu, &lock_cpus) {
@@ -4232,7 +4241,7 @@ static void walt_irq_work(struct irq_work *irq_work)
 		level++;
 	}
 
-	__walt_irq_work_locked(is_migration, &lock_cpus);
+	__walt_irq_work_locked(is_migration, is_asym_migration, &lock_cpus);
 
 	if (!is_migration) {
 		for_each_cpu(cpu, cpu_online_mask) {
@@ -5007,14 +5016,41 @@ struct qos_req qos_req_data[MAX_QOS_CLIENT][MAX_CLUSTERS];
 
 struct task_struct *qos_req_thread;
 
-static int __ref __add_freq_qos_request(void *data)
+static void do_freq_qos_request(struct qos_req
+			local_qos_req_data[MAX_QOS_CLIENT][MAX_CLUSTERS])
 {
 	struct cpufreq_policy policy;
 	struct freq_qos_request *req;
-	int cpu;
-	int ret;
-	int client;
+	int cpu, ret, i, client;
+
+	for (client = 0; client < MAX_QOS_CLIENT; client++) {
+		for (i = 0; i < num_sched_clusters; i++) {
+			if (local_qos_req_data[client][i].update_requested) {
+				cpu = cpumask_first(&sched_cluster[i]->cpus);
+				if (cpufreq_get_policy(&policy, cpu))
+					continue;
+				if (cpu_online(cpu))
+					continue;
+
+				req = get_req_from_client(cpu, client);
+
+				ret = freq_qos_update_request(req,
+							      local_qos_req_data[client][i].freq);
+
+				trace_sched_qos_freq_request(
+					cpu, local_qos_req_data[client][i].freq,
+					client, ret, local_qos_req_data[client][i].type);
+			}
+		}
+	}
+}
+
+static int __ref __add_freq_qos_request(void *data)
+{
+	struct qos_req local_qos_req_data[MAX_QOS_CLIENT][MAX_CLUSTERS];
 	unsigned long flags;
+	int client, i;
+	bool retry_flag;
 
 	while (!kthread_should_stop()) {
 		/*
@@ -5022,30 +5058,32 @@ static int __ref __add_freq_qos_request(void *data)
 		 * and service the latest instance of that request
 		 */
 		raw_spin_lock_irqsave(&qos_req_lock, flags);
-		for (client = 0; client < MAX_QOS_CLIENT; client++) {
-			for (int i = 0; i < num_sched_clusters; i++) {
-				if (qos_req_data[client][i].update_requested) {
-					cpu = cpumask_first(&sched_cluster[i]->cpus);
-					if (cpufreq_get_policy(&policy, cpu))
-						continue;
-					if (cpu_online(cpu)) {
-						req = get_req_from_client(cpu, client);
+		do {
+			retry_flag = false;
 
-						ret = freq_qos_update_request(req,
-							qos_req_data[client][i].freq);
+			memcpy(local_qos_req_data, qos_req_data,
+			       sizeof(struct qos_req) * MAX_QOS_CLIENT * MAX_CLUSTERS);
 
-						trace_sched_qos_freq_request(
-							cpu,
-							qos_req_data[client][i].freq,
-							client, ret, qos_req_data[client][i].type);
+			for (client = 0; client < MAX_QOS_CLIENT; client++)
+				for (i = 0; i < num_sched_clusters; i++)
+					qos_req_data[client][i].update_requested = false;
+
+			raw_spin_unlock_irqrestore(&qos_req_lock, flags);
+			do_freq_qos_request(local_qos_req_data);
+			raw_spin_lock_irqsave(&qos_req_lock, flags);
+
+			for (client = 0; client < MAX_QOS_CLIENT; client++) {
+				for (i = 0; i < num_sched_clusters; i++) {
+					if (qos_req_data[client][i].update_requested) {
+						retry_flag = true;
+						break;
 					}
 				}
-				qos_req_data[client][i].update_requested = false;
 			}
-		}
+		} while (retry_flag);
+		set_current_state(TASK_INTERRUPTIBLE);
 		raw_spin_unlock_irqrestore(&qos_req_lock, flags);
 
-		set_current_state(TASK_INTERRUPTIBLE);
 		schedule();
 		set_current_state(TASK_RUNNING);
 	}
@@ -5072,11 +5110,12 @@ void add_freq_qos_request(struct cpumask cpus, s32 freq,
 {
 	unsigned long flags;
 	int cpu;
+	int i;
 
 	raw_spin_lock_irqsave(&qos_req_lock, flags);
 
 	for_each_cpu(cpu, &cpus) {
-		for (int i = 0; i < num_sched_clusters; i++) {
+		for (i = 0; i < num_sched_clusters; i++) {
 			if (cpumask_test_cpu(cpu, &sched_cluster[i]->cpus)) {
 				qos_req_data[client][i].freq = freq;
 				qos_req_data[client][i].type = type;
@@ -5132,6 +5171,13 @@ cleanup:
 			freq_qos_remove_request(req);
 	}
 }
+
+void walt_get_cpus_in_state1(struct cpumask *cpus)
+{
+	cpumask_or(cpus, cpu_partial_halt_mask, &sched_cluster[0]->cpus);
+	cpumask_andnot(cpus, cpus, cpu_halt_mask);
+}
+EXPORT_SYMBOL(walt_get_cpus_in_state1);
 
 static void register_walt_hooks(void)
 {

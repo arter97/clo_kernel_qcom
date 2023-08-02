@@ -274,6 +274,16 @@ config QCOM_RMTFS_MEM
 
 	  Say y here if you intend to boot the modem remoteproc.
 
+config QCOM_QFPROM_SYS
+	tristate "Qualcomm Technologies, Inc. QFPROM_SYS driver "
+	depends on NVMEM_QCOM_QFPROM
+	help
+	  Qualcomm Technologies, Inc. QFPROM_SYS driver. The QFPROM SYS driver
+	  provides access to the child nodes of QFPROM to user space. The cell
+	  values are exported as sysfs entries.
+
+	  Say y here to enable QFPROM SYS support.
+
 config MSM_CORE_HANG_DETECT
         tristate "MSM Core Hang Detection Support"
         help
@@ -1111,5 +1121,23 @@ config RENAME_DEVICES
 	  which is needed during android verified boot process and it
 	  also maps to physical partition names on gvm side which help
 	  identify the block and network devices.
+
+config QCOM_S2D_VENDOR_HOOK
+	tristate "Vendor hook module to route flow of the core Kernel"
+	help
+	  This options enable vendor hook callbacks for bootloader based
+	  hibernation. Callbacks implemented here are called from the
+          core kernel and help to do bootloader hibernation specific job.
+	  Enable this if bootloader hibernation is enabled.
+
+config QCOM_SECURE_HIBERNATION
+	tristate "Add security support to hibernation"
+	depends on HIBERNATION
+	help
+	  Secure the hibernation snapshot by encrypting
+	  the snapshot at kernel before saving to disk.
+	  This uses GCM-AES crypto algorithm to encrypt the
+	  pages at the kernel.
+	  If not sure, say N.
 
 endmenu
