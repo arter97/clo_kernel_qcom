@@ -43,7 +43,6 @@ def define_gen3auto():
         "drivers/i2c/i2c-dev.ko",
         "drivers/i2c/i2c-mux.ko",
         "drivers/i2c/muxes/i2c-mux-pca954x.ko",
-        "drivers/iio/adc/qcom-spmi-adc5.ko",
         "drivers/iio/adc/qcom-vadc-common.ko",
         "drivers/iio/buffer/kfifo_buf.ko",
         "drivers/input/misc/pm8941-pwrkey.ko",
