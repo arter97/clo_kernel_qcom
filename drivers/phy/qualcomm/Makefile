@@ -16,7 +16,6 @@ obj-$(CONFIG_PHY_QCOM_UFS_V4_LAHAINA)    += phy-qcom-ufs-qmp-v4-lahaina.o
 obj-$(CONFIG_PHY_QCOM_UFS_V3_SM4350)	+= phy-qcom-ufs-qmp-v3.o
 
 obj-$(CONFIG_PHY_QCOM_QMP)		+= \
-	phy-qcom-qmp.o \
 	phy-qcom-qmp-combo.o \
 	phy-qcom-qmp-pcie.o \
 	phy-qcom-qmp-pcie-msm8996.o \

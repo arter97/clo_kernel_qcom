@@ -23,6 +23,9 @@
 #include <dt-bindings/phy/phy.h>
 
 #include "phy-qcom-qmp.h"
+#include "phy-qcom-qmp-qserdes-txrx-v5_5nm.h"
+#include "phy-qcom-qmp-qserdes-com-v5.h"
+#include "phy-qcom-qmp-pcs-v5.h"
 
 /* QPHY_SW_RESET bit */
 #define SW_RESET				BIT(0)
@@ -1696,6 +1699,9 @@ static const struct qmp_phy_cfg sc8280xp_usb3_uniphy_cfg = {
 	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
 	.regs			= qmp_v4_usb3phy_regs_layout,
 	.pcs_usb_offset		= 0x1000,
+
+
+	.has_pwrdn_delay	= true,
 };
 
 static const struct qmp_phy_cfg qmp_v3_usb3_uniphy_cfg = {
@@ -2591,6 +2597,8 @@ MODULE_DEVICE_TABLE(of, qmp_usb_of_match_table);
 static const struct dev_pm_ops qmp_usb_pm_ops = {
 	SET_RUNTIME_PM_OPS(qmp_usb_runtime_suspend,
 			   qmp_usb_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(qmp_usb_runtime_suspend,
+				qmp_usb_runtime_resume)
 };
 
 static int qmp_usb_probe(struct platform_device *pdev)
@@ -2678,7 +2686,8 @@ static int qmp_usb_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(qmp->dev,
 				"failed to register pipe clock source\n");
-			goto err_node_put;
+		// TODO: amend the graceful exit for no pipe clk register for makena
+		//	goto err_node_put;
 		}
 
 		id++;

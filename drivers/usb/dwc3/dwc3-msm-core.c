@@ -565,6 +565,7 @@ struct dwc3_msm {
 #define PWR_EVENT_SS_WAKEUP	BIT(0)
 #define PWR_EVENT_HS_WAKEUP	BIT(1)
 	bool			host_poweroff_in_pm_suspend;
+	bool			support_mp;
 	bool			disable_host_ssphy_powerdown;
 	bool			hibernate_skip_thaw;
 	unsigned long		lpm_flags;
@@ -5888,6 +5889,11 @@ static int dwc3_msm_core_init(struct dwc3_msm *mdwc)
 								__func__);
 	}
 
+	if (of_property_read_bool(node, "qcom,support-mp")) {
+		mdwc->support_mp = true;
+		dev_err(mdwc->dev, "%s: MP support present\n",__func__);
+	}
+
 	mdwc->dwc3_drd_sw = usb_role_switch_find_by_fwnode(dev_fwnode(dwc->dev));
 	if (IS_ERR(mdwc->dwc3_drd_sw)) {
 		dev_err(mdwc->dev, "failed to find dwc3 drd role switch\n");
@@ -5899,7 +5905,9 @@ static int dwc3_msm_core_init(struct dwc3_msm *mdwc)
 	if (!mdwc->dwc3_pm_ops)
 		goto depopulate;
 
-	dwc3_msm_override_pm_ops(dwc->dev, mdwc->dwc3_pm_ops, false);
+	if (!mdwc->support_mp)
+		dwc3_msm_override_pm_ops(dwc->dev, mdwc->dwc3_pm_ops, false);
+
 	if (mdwc->hibernate_skip_thaw)
 		dev_pm_syscore_device(dwc->dev, true);
 
@@ -6873,7 +6881,8 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		usb_role_switch_set_role(mdwc->dwc3_drd_sw, USB_ROLE_HOST);
 		if (dwc->dr_mode == USB_DR_MODE_OTG)
 			flush_work(&dwc->drd_work);
-		dwc3_msm_override_pm_ops(&dwc->xhci->dev, mdwc->xhci_pm_ops, true);
+		if (!mdwc->support_mp)
+			dwc3_msm_override_pm_ops(&dwc->xhci->dev, mdwc->xhci_pm_ops, true);
 		mdwc->in_host_mode = true;
 		pm_runtime_use_autosuspend(&dwc->xhci->dev);
 		pm_runtime_set_autosuspend_delay(&dwc->xhci->dev, 0);
@@ -7368,7 +7377,7 @@ static int dwc3_msm_pm_resume(struct device *dev)
 	atomic_set(&mdwc->pm_suspended, 0);
 
 	/* Let DWC3 core complete determine if resume is needed */
-	if (!mdwc->in_host_mode)
+	if (!mdwc->support_mp && !mdwc->in_host_mode)
 		return 0;
 
 	/* Resume dwc to avoid unclocked access by xhci_plat_resume */
