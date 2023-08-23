@@ -23,7 +23,7 @@
 #define WRAPPED_KEY_SIZE \
 		(AAD_WITH_PAD_LENGTH + WRAP_PAYLOAD_LENGTH + MAC_LENGTH + \
 		NONCE_LENGTH)
-#define IV_SIZE 12
+#define IV_SIZE			12
 
 struct qcom_crypto_params {
 	unsigned int authsize;

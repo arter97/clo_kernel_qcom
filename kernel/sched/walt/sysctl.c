@@ -277,6 +277,7 @@ enum {
 	LOW_LATENCY,
 	PIPELINE,
 	LOAD_BOOST,
+	REDUCE_AFFINITY,
 };
 
 static int sched_task_handler(struct ctl_table *table, int write,
@@ -290,6 +291,8 @@ static int sched_task_handler(struct ctl_table *table, int write,
 	struct walt_task_struct *wts;
 	struct rq *rq;
 	struct rq_flags rf;
+	unsigned long bitmask;
+	const unsigned long *bitmaskp = &bitmask;
 
 	struct ctl_table tmp = {
 		.data	= &pid_and_val,
@@ -337,6 +340,9 @@ static int sched_task_handler(struct ctl_table *table, int write,
 			break;
 		case LOAD_BOOST:
 			pid_and_val[1] = wts->load_boost;
+			break;
+		case REDUCE_AFFINITY:
+			pid_and_val[1] = cpumask_bits(&wts->reduce_mask)[0];
 			break;
 		default:
 			ret = -EINVAL;
@@ -437,6 +443,11 @@ static int sched_task_handler(struct ctl_table *table, int write,
 		else
 			wts->boosted_task_load = 0;
 		break;
+	case REDUCE_AFFINITY:
+		bitmask = (unsigned long) val;
+		bitmap_copy(sysctl_bitmap, bitmaskp, WALT_NR_CPUS);
+		cpumask_copy(&wts->reduce_mask, to_cpumask(sysctl_bitmap));
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -473,6 +484,7 @@ static void sched_update_updown_migrate_values(bool up)
 				sysctl_sched_capacity_margin_dn_pct[i];
 		}
 
+		trace_sched_update_updown_migrate_values(up, i);
 		if (++i >= num_sched_clusters - 1)
 			break;
 	}
@@ -562,6 +574,7 @@ static void sched_update_updown_early_migrate_values(bool up)
 				sched_capacity_margin_early_down[cpu] = sysctl_sched_early_down[i];
 		}
 
+		trace_sched_update_updown_early_migrate_values(up, i);
 		if (++i >= num_sched_clusters - 1)
 			break;
 	}
@@ -1081,6 +1094,13 @@ struct ctl_table walt_table[] = {
 	{
 		.procname	= "task_load_boost",
 		.data		= (int *) LOAD_BOOST,
+		.maxlen		= sizeof(unsigned int) * 2,
+		.mode		= 0644,
+		.proc_handler	= sched_task_handler,
+	},
+	{
+		.procname	= "task_reduce_affinity",
+		.data		= (int *) REDUCE_AFFINITY,
 		.maxlen		= sizeof(unsigned int) * 2,
 		.mode		= 0644,
 		.proc_handler	= sched_task_handler,

@@ -74,9 +74,9 @@ enum migrate_types {
 };
 
 enum pipeline_types {
-	NO_PIPELINE = 0,
-	MANUAL_PIPELINE = 1,
-	AUTO_PIPELINE = 2,
+	MANUAL_PIPELINE,
+	AUTO_PIPELINE,
+	MAX_PIPELINE_TYPES,
 };
 
 #define WALT_LOW_LATENCY_PROCFS		BIT(0)
@@ -1017,9 +1017,12 @@ extern struct cpumask __cpu_partial_halt_mask;
 				!is_min_possible_cluster_cpu(cpu) && \
 				!cpu_partial_halted(cpu))
 
-static inline bool cluster_partial_halted(void)
+static inline bool is_state1(void)
 {
-	return cpumask_equal(cpu_partial_halt_mask, &part_haltable_cpus);
+	struct cpumask local_mask = { CPU_BITS_NONE };
+
+	cpumask_or(&local_mask, cpu_partial_halt_mask, cpu_halt_mask);
+	return cpumask_subset(&part_haltable_cpus, &local_mask);
 }
 
 /* determine if this task should be allowed to use a partially halted cpu */
