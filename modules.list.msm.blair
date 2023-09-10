@@ -4,6 +4,7 @@ qcom_cpu_vendor_hooks.ko
 qcom-scm.ko
 pinctrl-msm.ko
 pinctrl-blair.ko
+pinctrl-holi.ko
 cmd-db.ko
 qcom_ipc_logging.ko
 irq-qcom-mpm.ko
@@ -28,6 +29,7 @@ msm-poweroff.ko
 icc-debug.ko
 icc-rpm.ko
 qnoc-blair.ko
+qnoc-holi.ko
 qnoc-qos-rpm.ko
 dispcc-blair.ko
 gcc-blair.ko
@@ -67,6 +69,7 @@ qcom-cpufreq-hw.ko
 dcc_v2.ko
 memory_dump_v2.ko
 phy-qcom-ufs.ko
+phy-qcom-ufs-qmp-v3.ko
 phy-qcom-ufs-qmp-v4-blair.ko
 phy-qcom-ufs-qrbtc-sdm845.ko
 ufs_qcom.ko
@@ -83,3 +86,7 @@ cqhci.ko
 sdhci-msm.ko
 gcc-holi.ko
 dispcc-holi.ko
+crypto-qti.ko
+crypto-qti-common.ko
+crypto-qti-hwkm.ko
+hwkm_v1.ko
