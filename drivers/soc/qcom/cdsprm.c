@@ -1051,11 +1051,16 @@ static int cdsprm_rpmsg_callback(struct rpmsg_device *dev, void *data,
 	struct cdsprm_request *req;
 	unsigned long flags;
 
-	if (!data || (len < sizeof(*msg)) ||
-	    ((len > sizeof(*msg) && msg_v2->size != len))) {
+	if (!data || (len < sizeof(*msg))) {
 		dev_err(&dev->dev,
 			"Invalid message in rpmsg callback, length: %d, expected: >= %lu\n",
 			len, sizeof(*msg));
+		return -EINVAL;
+	} else if ((msg->feature_id >= SYSMON_CDSP_DCVS_CLIENTS_RX_STATUS) &&
+		((msg_v2->size != len) || (len < sizeof(*msg_v2)))) {
+		dev_err(&dev->dev,
+			"Invalid message in rpmsg callback, length: %d, expected: >= %lu\n",
+			len, sizeof(*msg_v2));
 		return -EINVAL;
 	}
 
@@ -1441,12 +1446,12 @@ static void print_client_classes(unsigned int adsppmClientClass)
 	char buf[120];
 	int bitMask = 1;
 
-	strlcat(buf, "Client Class: ", sizeof(buf));
+	strscpy(buf, "Client Class: ", sizeof(buf));
 	for (int i = 0; i < 5; i++) {
 		if ((bitMask & adsppmClientClass) != 0) {
 			switch (i) {
 			case 0:
-				strlcat(buf, "AUIDO ", sizeof(buf));
+				strlcat(buf, "AUDIO ", sizeof(buf));
 				break;
 			case 1:
 				strlcat(buf, "VOICE ", sizeof(buf));
@@ -2151,7 +2156,7 @@ static int __init cdsprm_init(void)
 	gcdsprm.cdsprm_wq_task = kthread_run(process_cdsp_request_thread,
 					NULL, "cdsprm-wq");
 
-	if (!gcdsprm.cdsprm_wq_task) {
+	if (IS_ERR(gcdsprm.cdsprm_wq_task)) {
 		pr_err("Failed to create kernel thread\n");
 		return -ENOMEM;
 	}

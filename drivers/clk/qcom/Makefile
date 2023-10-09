@@ -124,6 +124,7 @@ obj-$(CONFIG_SM_DISPCC_BLAIR) += dispcc-blair.o
 obj-$(CONFIG_SM_DISPCC_HOLI) += dispcc-holi.o
 obj-$(CONFIG_SM_DISPCC_PINEAPPLE) += dispcc-pineapple.o
 obj-$(CONFIG_SM_DEBUGCC_BLAIR) += debugcc-blair.o
+obj-$(CONFIG_SM_DEBUGCC_CLIFFS) += debugcc-cliffs.o
 obj-$(CONFIG_SM_DEBUGCC_HOLI) += debugcc-holi.o
 obj-$(CONFIG_SM_DEBUGCC_PINEAPPLE) += debugcc-pineapple.o
 obj-$(CONFIG_SM_GCC_6115) += gcc-sm6115.o
@@ -136,10 +137,12 @@ obj-$(CONFIG_SM_GCC_8250) += gcc-sm8250.o
 obj-$(CONFIG_SM_GCC_8350) += gcc-sm8350.o
 obj-$(CONFIG_SM_GCC_8450) += gcc-sm8450.o
 obj-$(CONFIG_SM_GCC_BLAIR) += gcc-blair.o
+obj-$(CONFIG_SM_GCC_CLIFFS) += gcc-cliffs.o
 obj-$(CONFIG_SM_GCC_HOLI) += gcc-holi.o
 obj-$(CONFIG_SM_GCC_PINEAPPLE) += gcc-pineapple.o
 obj-$(CONFIG_SM_GPUCC_6150) += gpucc-sm6150.o
 obj-$(CONFIG_SM_GPUCC_6350) += gpucc-sm6350.o
+obj-$(CONFIG_SM_CAMCC_CLIFFS) += camcc-cliffs.o
 obj-$(CONFIG_SM_CAMCC_PINEAPPLE) += camcc-pineapple.o
 obj-$(CONFIG_SM_GCC_KALAMA) += gcc-kalama.o
 obj-$(CONFIG_SM_NPUCC_8150) += npucc-sm8150.o
@@ -155,6 +158,7 @@ obj-$(CONFIG_SM_GPUCC_8150) += gpucc-sm8150.o
 obj-$(CONFIG_SM_GPUCC_8250) += gpucc-sm8250.o
 obj-$(CONFIG_SM_GPUCC_8350) += gpucc-sm8350.o
 obj-$(CONFIG_SM_GPUCC_BLAIR) += gpucc-blair.o
+obj-$(CONFIG_SM_GPUCC_CLIFFS) += gpucc-cliffs.o
 obj-$(CONFIG_SM_GPUCC_HOLI) += gpucc-holi.o
 obj-$(CONFIG_SM_GPUCC_PINEAPPLE) += gpucc-pineapple.o
 obj-$(CONFIG_SM_VIDEOCC_6150) += videocc-sm6150.o
@@ -167,4 +171,5 @@ obj-$(CONFIG_KPSS_XCC) += kpss-xcc.o
 obj-$(CONFIG_QCOM_HFPLL) += hfpll.o
 obj-$(CONFIG_KRAITCC) += krait-cc.o
 obj-$(CONFIG_VIRTIO_CLK) += virtio_clk.o virtio_clk_sm8150.o virtio_clk_direwolf.o \
-		virtio_clk_sa8195p.o virtio_clk_lemans.o virtio_clk_sm6150.o
+		virtio_clk_sa8195p.o virtio_clk_lemans.o virtio_clk_sm6150.o \
+		virtio_clk_monaco.o

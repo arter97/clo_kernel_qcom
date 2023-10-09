@@ -131,6 +131,11 @@ static struct arm_smmu_domain *to_smmu_domain(struct iommu_domain *dom)
 	return container_of(dom, struct arm_smmu_domain, domain);
 }
 
+static struct arm_smmu_domain *cb_cfg_to_smmu_domain(struct arm_smmu_cfg *cfg)
+{
+	return container_of(cfg, struct arm_smmu_domain, cfg);
+}
+
 static void parse_driver_options(struct arm_smmu_device *smmu)
 {
 	int i = 0;
@@ -1294,11 +1299,11 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	int irq, start, ret = 0;
 	unsigned long ias, oas;
 	struct io_pgtable_ops *pgtbl_ops;
-	struct qcom_io_pgtable_info pgtbl_info = {};
-	struct io_pgtable_cfg *pgtbl_cfg = &pgtbl_info.cfg;
 	enum io_pgtable_fmt fmt;
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	struct arm_smmu_cfg *cfg = &smmu_domain->cfg;
+	struct qcom_io_pgtable_info *pgtbl_info = &smmu_domain->pgtbl_info;
+	struct io_pgtable_cfg *pgtbl_cfg = &pgtbl_info->cfg;
 	irqreturn_t (*context_fault)(int irq, void *dev);
 	struct io_pgtable *iop;
 
@@ -1420,12 +1425,12 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	if (smmu_domain->mapping_cfg.fast) {
 		fmt = ARM_V8L_FAST;
 		ret = qcom_iommu_get_fast_iova_range(dev,
-					&pgtbl_info.iova_base,
-					&pgtbl_info.iova_end);
+					&pgtbl_info->iova_base,
+					&pgtbl_info->iova_end);
 		if (ret < 0)
 			goto out_unlock;
 	} else if (arm_smmu_has_secure_vmid(smmu_domain)) {
-		pgtbl_info.vmid = smmu_domain->secure_vmid;
+		pgtbl_info->vmid = smmu_domain->secure_vmid;
 	}
 
 	ret = arm_smmu_alloc_context_bank(smmu_domain, smmu, dev, start);
@@ -1448,9 +1453,9 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	else
 		cfg->asid = cfg->cbndx;
 
-	pgtbl_info.iommu_tlb_ops = &arm_smmu_iotlb_ops;
-	pgtbl_info.pgtable_log_ops = &arm_smmu_pgtable_log_ops;
-	pgtbl_info.cfg = (struct io_pgtable_cfg) {
+	pgtbl_info->iommu_tlb_ops = &arm_smmu_iotlb_ops;
+	pgtbl_info->pgtable_log_ops = &arm_smmu_pgtable_log_ops;
+	pgtbl_info->cfg = (struct io_pgtable_cfg) {
 		.pgsize_bitmap	= smmu->pgsize_bitmap,
 		.ias		= ias,
 		.oas		= oas,
@@ -1468,12 +1473,13 @@ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
 	if (smmu_domain->pgtbl_quirks)
 		pgtbl_cfg->quirks |= smmu_domain->pgtbl_quirks;
 
-	pgtbl_ops = qcom_alloc_io_pgtable_ops(fmt, &pgtbl_info, smmu_domain);
+	pgtbl_ops = qcom_alloc_io_pgtable_ops(fmt, pgtbl_info, smmu_domain);
 	if (!pgtbl_ops) {
 		ret = -ENOMEM;
 		goto out_clear_smmu;
 	}
 
+	smmu_domain->pgtbl_fmt = fmt;
 	iop = container_of(pgtbl_ops, struct io_pgtable, ops);
 	ret = iommu_logger_register(&smmu_domain->logger, domain,
 				    smmu_domain->dev, iop);
@@ -2656,6 +2662,22 @@ static int arm_smmu_def_domain_type(struct device *dev)
 	return 0;
 }
 
+static inline void __arm_smmu_sid_switch_touch_cbar(struct arm_smmu_device *smmu,
+						    struct arm_smmu_master_cfg *cfg,
+						    struct iommu_fwspec *fwspec)
+{
+	int i, idx;
+	u8 cbndx;
+
+	/* Use for_each_cfg_sme() to look up the context bank index */
+	for_each_cfg_sme(cfg, fwspec, i, idx) {
+		cbndx = smmu->s2crs[idx].cbndx;
+		/* Touch the CBAR by calling arm_smmu_write_context_bank() */
+		arm_smmu_write_context_bank(smmu, cbndx);
+		break;
+	}
+}
+
 static int __arm_smmu_sid_switch(struct device *dev, void *data)
 {
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
@@ -2671,6 +2693,16 @@ static int __arm_smmu_sid_switch(struct device *dev, void *data)
 	arm_smmu_rpm_get(smmu);
 
 	mutex_lock(&smmu->stream_map_mutex);
+
+	/*
+	 * When activating an SMR on a VM, we need to ensure that the SMR's
+	 * corresponding CBAR has the right VMID value, which is provided by the
+	 * hypervisor. Touch the CBAR register before doing the SID-switch to do
+	 * this.
+	 */
+	if (dir == SID_ACQUIRE)
+		__arm_smmu_sid_switch_touch_cbar(smmu, cfg, fwspec);
+
 	for_each_cfg_sme(cfg, fwspec, i, idx) {
 		smmu->smrs[idx].valid = dir == SID_ACQUIRE;
 		arm_smmu_write_sme(smmu, idx);
@@ -3775,12 +3807,76 @@ static int arm_smmu_pm_prepare(struct device *dev)
 
 	return (atomic_read(&dev->power.usage_count) == 1) ? -EINPROGRESS : 0;
 }
+static int __maybe_unused arm_smmu_pm_restore_early(struct device *dev)
+{
+	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
+	struct arm_smmu_domain *smmu_domain;
+	struct io_pgtable_ops *pgtbl_ops;
+	struct io_pgtable_cfg *pgtbl_cfg;
+	struct arm_smmu_cb *cb;
+	int idx, ret;
+
+	/*
+	 * Restore the page tables for secure vmids as they are lost
+	 * after hibernation in secure code context.
+	 */
+	for (idx = 0; idx < smmu->num_context_banks; idx++) {
+		cb = &smmu->cbs[idx];
+		if (!cb->cfg)
+			continue;
+		smmu_domain = cb_cfg_to_smmu_domain(cb->cfg);
+		if (!arm_smmu_has_secure_vmid(smmu_domain))
+			continue;
+		pgtbl_cfg = &smmu_domain->pgtbl_info.cfg;
+		pgtbl_ops = qcom_alloc_io_pgtable_ops(smmu_domain->pgtbl_fmt,
+					&smmu_domain->pgtbl_info, smmu_domain);
+		if (!pgtbl_ops) {
+			dev_err(smmu->dev,
+			"failed to allocate page tables	during pm restore for cxt %d %s\n",
+				idx, dev_name(dev));
+			return -ENOMEM;
+		}
+		smmu_domain->pgtbl_ops = pgtbl_ops;
+		arm_smmu_init_context_bank(smmu_domain, pgtbl_cfg);
+	}
+	arm_smmu_pm_resume(dev);
+	ret = arm_smmu_runtime_suspend(dev);
+	if (ret) {
+		dev_err(dev, "Failed to suspend\n");
+		return ret;
+	}
+	return 0;
+}
+
+static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
+{
+	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
+	struct arm_smmu_domain *smmu_domain;
+	struct arm_smmu_cb *cb;
+	int idx;
+
+	for (idx = 0; idx < smmu->num_context_banks; idx++) {
+		cb = &smmu->cbs[idx];
+		if (cb && cb->cfg) {
+			smmu_domain = cb_cfg_to_smmu_domain(cb->cfg);
+			if (smmu_domain &&
+				arm_smmu_has_secure_vmid(smmu_domain)) {
+				qcom_free_io_pgtable_ops(smmu_domain->pgtbl_ops);
+			}
+		}
+	}
+	return 0;
+}
 
 static const struct dev_pm_ops arm_smmu_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(arm_smmu_pm_suspend, arm_smmu_pm_resume)
 	SET_RUNTIME_PM_OPS(arm_smmu_runtime_suspend,
 			   arm_smmu_runtime_resume, NULL)
 	.prepare = arm_smmu_pm_prepare,
+	.suspend  = arm_smmu_pm_suspend,
+	.resume   = arm_smmu_pm_resume,
+	.thaw_early = arm_smmu_pm_restore_early,
+	.freeze_late = arm_smmu_pm_freeze_late,
+	.restore_early = arm_smmu_pm_restore_early,
 };
 
 static struct platform_driver arm_smmu_driver = {

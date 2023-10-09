@@ -1962,7 +1962,7 @@ int qcom_scm_config_set_ice_key(uint32_t index, phys_addr_t paddr, size_t size,
 					QCOM_SCM_VAL, QCOM_SCM_VAL),
 	};
 
-	return qcom_scm_call_noretry(__scm->dev, &desc, NULL);
+	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
 EXPORT_SYMBOL(qcom_scm_config_set_ice_key);
 
@@ -1977,7 +1977,7 @@ int qcom_scm_clear_ice_key(uint32_t index,  unsigned int ce)
 		.arginfo = QCOM_SCM_ARGS(2),
 	};
 
-	return qcom_scm_call_noretry(__scm->dev, &desc, NULL);
+	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
 EXPORT_SYMBOL(qcom_scm_clear_ice_key);
 
@@ -1996,7 +1996,7 @@ int qcom_scm_derive_raw_secret(phys_addr_t paddr_key, size_t size_key,
 	desc.args[3] = size_secret;
 	desc.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
 					QCOM_SCM_RW, QCOM_SCM_VAL);
-	return qcom_scm_call_noretry(__scm->dev, &desc, NULL);
+	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
 EXPORT_SYMBOL(qcom_scm_derive_raw_secret);
 
@@ -2351,6 +2351,7 @@ int qcom_scm_tsens_reinit(int *tsens_ret)
 	struct qcom_scm_desc desc = {
 		.svc = QCOM_SCM_SVC_TSENS,
 		.cmd = QCOM_SCM_TSENS_INIT_ID,
+		.owner = ARM_SMCCC_OWNER_SIP,
 	};
 	struct qcom_scm_res res;
 

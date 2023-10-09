@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
+#include <linux/suspend.h>
 #include <linux/types.h>
 #include <soc/qcom/rpm-smd.h>
 #include <soc/qcom/mpm.h>
@@ -70,6 +71,15 @@
 		k = get_next_kvp(k))
 
 
+#ifdef CONFIG_ARM
+#define readq_relaxed(a) ({			\
+	u64 val = readl_relaxed((a) + 4);	\
+	val <<= 32;				\
+	val |=  readl_relaxed((a));		\
+	val;					\
+})
+#endif
+
 /* Debug Definitions */
 enum {
 	MSM_RPM_LOG_REQUEST_PRETTY	= BIT(0),
@@ -89,8 +99,6 @@ struct msm_rpm_driver_data {
 	uint32_t ch_type;
 	struct smd_channel *ch_info;
 	struct work_struct work;
-	spinlock_t smd_lock_write;
-	spinlock_t smd_lock_read;
 	struct completion smd_open;
 };
 
@@ -191,7 +199,6 @@ enum rpm_msg_fmts {
 };
 
 static struct rb_root tr_root = RB_ROOT;
-static int msm_rpm_send_smd_buffer(char *buf, uint32_t size);
 static uint32_t msm_rpm_get_next_msg_id(void);
 
 static inline uint32_t get_offset_value(uint32_t val, uint32_t offset,
@@ -708,8 +715,8 @@ static int msm_rpm_flush_requests(void)
 
 		set_msg_id(s->buf, msm_rpm_get_next_msg_id());
 
-		ret = msm_rpm_send_smd_buffer(s->buf,
-					get_buf_len(s->buf));
+		ret = rpmsg_send(rpm->rpm_channel, s->buf, get_buf_len(s->buf));
+
 		WARN_ON(ret != 0);
 		trace_rpm_smd_send_sleep_set(get_msg_id(s->buf), type, id);
 
@@ -1158,17 +1165,6 @@ static void msm_rpm_log_request(struct msm_rpm_request *cdata)
 	pr_info("request info %s\n", buf);
 }
 
-static int msm_rpm_send_smd_buffer(char *buf, uint32_t size)
-{
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&msm_rpm_data.smd_lock_write, flags);
-	ret = rpmsg_send(rpm->rpm_channel, buf, size);
-	spin_unlock_irqrestore(&msm_rpm_data.smd_lock_write, flags);
-	return ret;
-}
-
 static int msm_rpm_send_data(struct msm_rpm_request *cdata,
 		int msg_type, bool noack)
 {
@@ -1259,7 +1255,7 @@ static int msm_rpm_send_data(struct msm_rpm_request *cdata,
 
 	msm_rpm_add_wait_list(msg_id, noack);
 
-	ret = msm_rpm_send_smd_buffer(&cdata->buf[0], msg_size);
+	ret = rpmsg_send(rpm->rpm_channel, &cdata->buf[0], msg_size);
 
 	if (!ret) {
 		for (i = 0; (i < cdata->write_idx); i++)
@@ -1430,7 +1426,7 @@ static int smd_mask_receive_interrupt(bool mask,
 
 	if (mask) {
 		irq_chip->irq_mask(irq_data);
-		if (cpumask)
+		if (cpumask && irq_chip->irq_set_affinity)
 			irq_chip->irq_set_affinity(irq_data, cpumask, true);
 	} else {
 		irq_chip->irq_unmask(irq_data);
@@ -1500,6 +1496,23 @@ static int rpm_smd_power_cb(struct notifier_block *nb, unsigned long action, voi
 	return NOTIFY_OK;
 }
 
+static int rpm_smd_pm_notifier(struct notifier_block *nb, unsigned long event, void *unused)
+{
+	int ret;
+
+	if (event == PM_SUSPEND_PREPARE) {
+		ret = msm_rpm_flush_requests();
+		pr_debug("ret = %d\n", ret);
+	}
+
+	/* continue to suspend */
+	return NOTIFY_OK;
+}
+
+static struct notifier_block rpm_smd_pm_nb = {
+	.notifier_call = rpm_smd_pm_notifier,
+};
+
 static int qcom_smd_rpm_callback(struct rpmsg_device *rpdev, void *ptr,
 				int size, void *priv, u32 addr)
 {
@@ -1546,7 +1559,7 @@ static int qcom_smd_rpm_probe(struct rpmsg_device *rpdev)
 	int ret = 0;
 	int irq;
 	void __iomem *reg_base;
-	uint32_t version = V0_PROTOCOL_VERSION; /* set to default v0 format */
+	uint64_t version = V0_PROTOCOL_VERSION; /* set to default v0 format */
 
 	p = of_find_compatible_node(NULL, NULL, "qcom,rpm-smd");
 	if (!p) {
@@ -1566,7 +1579,8 @@ static int qcom_smd_rpm_probe(struct rpmsg_device *rpdev)
 	standalone = of_property_read_bool(p, key);
 	if (standalone) {
 		probe_status = ret;
-		goto skip_init;
+		pr_info("RPM running in standalone mode\n");
+		return ret;
 	}
 
 	reg_base = of_iomap(p, 0);
@@ -1593,6 +1607,13 @@ static int qcom_smd_rpm_probe(struct rpmsg_device *rpdev)
 		goto fail;
 	}
 
+	ret = register_pm_notifier(&rpm_smd_pm_nb);
+	if (ret) {
+		pr_err("%s: power state notif error %d\n", __func__, ret);
+		probe_status = -ENODEV;
+		goto fail;
+	}
+
 	rpm->dev = &rpdev->dev;
 	rpm->rpm_channel = rpdev->ept;
 	dev_set_drvdata(&rpdev->dev, rpm);
@@ -1612,14 +1633,8 @@ static int qcom_smd_rpm_probe(struct rpmsg_device *rpdev)
 
 	mutex_init(&rpm->lock);
 	init_completion(&rpm->ack);
-	spin_lock_init(&msm_rpm_data.smd_lock_write);
-	spin_lock_init(&msm_rpm_data.smd_lock_read);
+	probe_status = 0;
 
-skip_init:
-	probe_status = of_platform_populate(p, NULL, NULL, &rpdev->dev);
-
-	if (standalone)
-		pr_info("RPM running in standalone mode\n");
 fail:
 	return probe_status;
 }
@@ -1642,12 +1657,20 @@ static struct rpmsg_driver qcom_smd_rpm_driver = {
 static int rpm_driver_probe(struct platform_device *pdev)
 {
 	int ret;
+	struct device_node *p = pdev->dev.of_node;
+
+	ret = of_platform_populate(p, NULL, NULL, &pdev->dev);
+	if (ret)
+		return ret;
 
 	ret = register_rpmsg_driver(&qcom_smd_rpm_driver);
-	if (ret)
+	if (ret) {
+		of_platform_depopulate(&pdev->dev);
 		pr_err("register_rpmsg_driver: failed with err %d\n", ret);
+		return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 static const struct of_device_id rpm_of_match[] = {

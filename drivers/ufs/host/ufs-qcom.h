@@ -11,6 +11,7 @@
 #include <linux/phy/phy.h>
 #include <linux/pm_qos.h>
 #include <linux/notifier.h>
+#include <linux/panic_notifier.h>
 #include <ufs/ufshcd.h>
 #include <ufs/unipro.h>
 
@@ -218,7 +219,7 @@ enum ufs_qcom_phy_init_type {
 #define BIT_LINKCFG_WAIT_LL1_RX_CFG_RDY BIT(26)
 #define SAVECONFIGTIME_MODE_MASK        0x6000
 #define DME_VS_CORE_CLK_CTRL    0xD002
-
+#define TX_HS_EQUALIZER		0x0037
 
 /* bit and mask definitions for DME_VS_CORE_CLK_CTRL attribute */
 #define DME_VS_CORE_CLK_CTRL_CORE_CLK_DIV_EN_BIT		BIT(8)
@@ -539,7 +540,7 @@ struct ufs_qcom_host {
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	void __iomem *ice_mmio;
 #endif
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER)
+#if (IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER) || IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1))
 	void __iomem *ice_hwkm_mmio;
 #endif
 
@@ -614,6 +615,7 @@ struct ufs_qcom_host {
 
 	bool bypass_pbl_rst_wa;
 	atomic_t cqhp_update_pending;
+	struct notifier_block ufs_qcom_panic_nb;
 };
 
 static inline u32

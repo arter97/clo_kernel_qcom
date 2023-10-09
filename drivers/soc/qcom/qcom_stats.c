@@ -49,6 +49,11 @@
 #define DDR_STATS_COUNT_ADDR		0x4
 #define DDR_STATS_DURATION_ADDR		0x8
 
+#define MAX_ISLAND_STATS_NAME_LENGTH	16
+#define MAX_ISLAND_STATS		6
+#define ISLAND_STATS_PID		2 /* ADSP PID */
+#define ISLAND_STATS_SMEM_ID		653
+
 #define STATS_BASEMINOR				0
 #define STATS_MAX_MINOR				1
 #define STATS_DEVICE_NAME			"stats"
@@ -100,6 +105,9 @@ static struct subsystem_data subsystems[] = {
 	{ "wpss", 605, 13 },
 	{ "adsp", 606, 2 },
 	{ "cdsp", 607, 5 },
+	{ "cdsp1", 607, 12 },
+	{ "gpdsp0", 607, 17 },
+	{ "gpdsp1", 607, 18 },
 	{ "slpi", 608, 3 },
 	{ "gpu", 609, 0 },
 	{ "display", 610, 0 },
@@ -118,6 +126,7 @@ struct stats_config {
 	bool subsystem_stats_in_smem;
 	bool read_ddr_votes;
 	bool ddr_freq_update;
+	bool island_stats_avail;
 };
 
 struct stats_data {
@@ -154,6 +163,17 @@ struct appended_stats {
 	u32 reserved[3];
 };
 
+struct island_stats {
+	char name[MAX_ISLAND_STATS_NAME_LENGTH];
+	u32 count;
+	u64 last_entered_at;
+	u64 last_exited_at;
+	u64 accumulated;
+	u32 vid;
+	u32 task_id;
+	u32 reserved[3];
+};
+
 static bool subsystem_stats_debug_on;
 /* Subsystem stats before and after suspend */
 static struct sleep_stats *b_subsystem_stats;
@@ -163,14 +183,27 @@ static struct sleep_stats *b_system_stats;
 static struct sleep_stats *a_system_stats;
 static DEFINE_MUTEX(sleep_stats_mutex);
 
+static inline void get_sleep_stat_name(u32 type, char *stat_type)
+{
+	int i;
+
+	for (i = 0; i < sizeof(u32); i++) {
+		stat_type[i] = type & 0xff;
+		type = type >> 8;
+	}
+	strim(stat_type);
+}
+
 bool has_system_slept(void)
 {
 	int i;
 	bool sleep_flag = true;
+	char stat_type[sizeof(u32) + 1] = {0};
 
 	for (i = 0; i < drv->config->num_records; i++) {
 		if (b_system_stats[i].count == a_system_stats[i].count) {
-			pr_warn("System %s has not entered sleep\n", a_system_stats[i].stat_type);
+			get_sleep_stat_name(b_system_stats[i].stat_type, stat_type);
+			pr_warn("System %s has not entered sleep\n", stat_type);
 			sleep_flag = false;
 		}
 	}
@@ -287,7 +320,7 @@ static int qcom_stats_device_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int qcom_stats_ddr_freqsync_msg(void)
+int qcom_stats_ddr_freqsync_msg(void)
 {
 	static const char buf[MAX_MSG_LEN] = "{class: ddr, action: freqsync}";
 	int ret = 0;
@@ -309,6 +342,7 @@ static int qcom_stats_ddr_freqsync_msg(void)
 
 	return ret;
 }
+EXPORT_SYMBOL(qcom_stats_ddr_freqsync_msg);
 
 static int qcom_stats_ddr_freq_sync(int *modes, struct sleep_stats *stat)
 {
@@ -626,7 +660,7 @@ static void cxvt_info_fill_data(void __iomem *reg, u32 entry_count,
 int cx_stats_get_ss_vote_info(int ss_count,
 			       struct qcom_stats_cx_vote_info *vote_info)
 {
-	static const char buf[MAX_MSG_LEN] = "{class: arc_statis, res: cx_vote}";
+	static const char buf[MAX_MSG_LEN] = "{class: misc_debug, res: cx_vote}";
 	void __iomem *reg;
 	int ret;
 	int i, j;
@@ -773,9 +807,36 @@ static int ddr_stats_show(struct seq_file *s, void *d)
 	return 0;
 }
 
+static int island_stats_show(struct seq_file *s, void *unused)
+{
+	struct island_stats *stat;
+	int i;
+
+	/* Items are allocated lazily, so lookup pointer each time */
+	stat = qcom_smem_get(ISLAND_STATS_PID, ISLAND_STATS_SMEM_ID, NULL);
+	if (IS_ERR(stat))
+		return 0;
+
+	for (i = 0; i < MAX_ISLAND_STATS; i++) {
+		if (!strcmp(stat[i].name, "DEADDEAD"))
+			continue;
+
+		seq_printf(s, "Name: %s\n", stat[i].name);
+		seq_printf(s, "Count: %u\n", stat[i].count);
+		seq_printf(s, "Last Entered At: %llu\n", stat[i].last_entered_at);
+		seq_printf(s, "Last Exited At: %llu\n", stat[i].last_exited_at);
+		seq_printf(s, "Accumulated Duration: %llu\n", stat[i].accumulated);
+		seq_printf(s, "Vid: %u\n", stat[i].vid);
+		seq_printf(s, "task_id: %u\n", stat[i].task_id);
+	}
+
+	return 0;
+}
+
 DEFINE_SHOW_ATTRIBUTE(qcom_soc_sleep_stats);
 DEFINE_SHOW_ATTRIBUTE(qcom_subsystem_sleep_stats);
 DEFINE_SHOW_ATTRIBUTE(ddr_stats);
+DEFINE_SHOW_ATTRIBUTE(island_stats);
 
 static int qcom_create_stats_device(struct stats_drvdata *drv)
 {
@@ -812,6 +873,16 @@ static int qcom_create_stats_device(struct stats_drvdata *drv)
 	return ret;
 }
 
+static void qcom_create_island_stat_files(struct dentry *root, void __iomem *reg,
+					  struct stats_data *d,
+					  const struct stats_config *config)
+{
+	if (!config->island_stats_avail)
+		return;
+
+	debugfs_create_file("island_stats", 0400, root, NULL, &island_stats_fops);
+}
+
 static void qcom_create_ddr_stat_files(struct dentry *root, void __iomem *reg,
 					     struct stats_data *d,
 					     const struct stats_config *config)
@@ -836,7 +907,7 @@ static void qcom_create_soc_sleep_stat_files(struct dentry *root, void __iomem *
 	char stat_type[sizeof(u32) + 1] = {0};
 	size_t stats_offset = config->stats_offset;
 	u32 offset = 0, type;
-	int i, j;
+	int i;
 
 	/*
 	 * On RPM targets, stats offset location is dynamic and changes from target
@@ -861,11 +932,7 @@ static void qcom_create_soc_sleep_stat_files(struct dentry *root, void __iomem *
 		 * For rpm-sleep-stats: "vmin" and "vlow".
 		 */
 		type = readl(d[i].base);
-		for (j = 0; j < sizeof(u32); j++) {
-			stat_type[j] = type & 0xff;
-			type = type >> 8;
-		}
-		strim(stat_type);
+		get_sleep_stat_name(type, stat_type);
 		debugfs_create_file(stat_type, 0400, root, &d[i],
 				    &qcom_soc_sleep_stats_fops);
 
@@ -937,6 +1004,7 @@ static int qcom_stats_probe(struct platform_device *pdev)
 	qcom_create_subsystem_stat_files(root, config, pdev->dev.of_node);
 	qcom_create_soc_sleep_stat_files(root, reg, d, config);
 	qcom_create_ddr_stat_files(root, reg, d, config);
+	qcom_create_island_stat_files(root, reg, d, config);
 
 	drv->d = d;
 	drv->config = config;
@@ -1028,9 +1096,10 @@ static int qcom_stats_suspend(struct device *dev)
 	mutex_lock(&sleep_stats_mutex);
 	for (i = 0; i < ARRAY_SIZE(subsystems); i++) {
 		tmp = qcom_smem_get(subsystems[i].pid, subsystems[i].smem_item, NULL);
-		if (IS_ERR(b_subsystem_stats + i))
+		if (IS_ERR(tmp)) {
 			subsystems[i].not_present = true;
-		else
+			continue;
+		} else
 			subsystems[i].not_present = false;
 		qcom_stats_copy(tmp, b_subsystem_stats + i);
 	}
@@ -1059,7 +1128,11 @@ static int qcom_stats_resume(struct device *dev)
 
 	mutex_lock(&sleep_stats_mutex);
 	for (i = 0; i < ARRAY_SIZE(subsystems); i++) {
+		if (subsystems[i].not_present)
+			continue;
 		tmp = qcom_smem_get(subsystems[i].pid, subsystems[i].smem_item, NULL);
+		if (IS_ERR(tmp))
+			continue;
 		qcom_stats_copy(tmp, a_subsystem_stats + i);
 	}
 
@@ -1131,6 +1204,19 @@ static const struct stats_config rpmh_v3_data = {
 	.ddr_freq_update = true,
 };
 
+static const struct stats_config rpmh_v4_data = {
+	.stats_offset = 0x48,
+	.ddr_stats_offset = 0xb8,
+	.cx_vote_offset = 0xb8,
+	.num_records = 3,
+	.appended_stats_avail = false,
+	.dynamic_offset = false,
+	.subsystem_stats_in_smem = true,
+	.read_ddr_votes = true,
+	.ddr_freq_update = true,
+	.island_stats_avail = true,
+};
+
 static const struct of_device_id qcom_stats_table[] = {
 	{ .compatible = "qcom,apq8084-rpm-stats", .data = &rpm_data_dba0 },
 	{ .compatible = "qcom,msm8226-rpm-stats", .data = &rpm_data_dba0 },
@@ -1140,6 +1226,7 @@ static const struct of_device_id qcom_stats_table[] = {
 	{ .compatible = "qcom,rpmh-stats", .data = &rpmh_data },
 	{ .compatible = "qcom,rpmh-stats-v2", .data = &rpmh_v2_data },
 	{ .compatible = "qcom,rpmh-stats-v3", .data = &rpmh_v3_data },
+	{ .compatible = "qcom,rpmh-stats-v4", .data = &rpmh_v4_data },
 	{ .compatible = "qcom,sdm845-rpmh-stats", .data = &rpmh_data_sdm845 },
 	{ }
 };

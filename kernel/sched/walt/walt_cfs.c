@@ -971,6 +971,10 @@ int walt_find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 		trace_sched_compute_energy(p, prev_cpu, prev_energy, 0, 0, 0, &output);
 	} else {
 		prev_energy = best_energy = ULONG_MAX;
+		if (weight == 1) {
+			best_energy_cpu = first_cpu;
+			goto unlock;
+		}
 	}
 
 	/* Select the best candidate energy-wise. */
@@ -1184,7 +1188,7 @@ static void walt_cfs_account_mvp_runtime(struct rq *rq, struct task_struct *curr
 	u64 slice;
 	unsigned int limit;
 
-	lockdep_assert_held(&rq->__lock);
+	walt_lockdep_assert_rq(rq, NULL);
 
 	/*
 	 * RQ clock update happens in tick path in the scheduler.

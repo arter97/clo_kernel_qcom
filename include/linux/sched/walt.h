@@ -152,6 +152,9 @@ struct walt_task_struct {
 	u8				enqueue_after_migration;
 	u8				hung_detect_status;
 	int				pipeline_cpu;
+	cpumask_t			reduce_mask;
+	u64				mark_start_birth_ts;
+	u8				high_util_history;
 };
 
 /*
@@ -201,6 +204,7 @@ extern int core_ctl_set_boost(bool boost);
 extern void walt_set_cpus_taken(struct cpumask *set);
 extern void walt_unset_cpus_taken(struct cpumask *unset);
 extern cpumask_t walt_get_cpus_taken(void);
+extern void walt_get_cpus_in_state1(struct cpumask *cpus);
 
 extern int walt_pause_cpus(struct cpumask *cpus, enum pause_client client);
 extern int walt_resume_cpus(struct cpumask *cpus, enum pause_client client);

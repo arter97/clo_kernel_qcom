@@ -22,7 +22,7 @@
 #include "qcom_glink_native.h"
 
 /* Define IPC Logging Macros */
-#define GLINK_PKT_IPC_LOG_PAGE_CNT 2
+#define GLINK_PKT_IPC_LOG_PAGE_CNT 32
 static void *glink_pkt_ilctxt;
 
 #define GLINK_PKT_INFO(x, ...)						     \
@@ -162,15 +162,20 @@ static DEVICE_ATTR_RW(open_timeout);
 
 static void glink_pkt_kfree_skb(struct glink_pkt_device *gpdev, struct sk_buff *skb)
 {
+	int ret;
+
 	if (gpdev->rx_done) {
-		qcom_glink_rx_done(gpdev->rpdev->ept, skb->data);
+		GLINK_PKT_INFO("channel:%s\n", gpdev->ch_name);
+		ret = qcom_glink_rx_done(gpdev->rpdev->ept, skb->data);
+		if (ret < 0)
+			GLINK_PKT_INFO("Failed channel:%s ret:%d\n", gpdev->ch_name, ret);
 		/*
 		 * Data memory is freed by qcom_glink_rx_done(), reset the
 		 * skb data pointers so kfree_skb() does not try to free
-		 * a second time.
+		 * a second time and originally allocated buffer is freed
+		 * correctly.
 		 */
-		skb->head = NULL;
-		skb->data = NULL;
+		skb->data = skb->head;
 	}
 	kfree_skb(skb);
 }
@@ -203,15 +208,18 @@ static int glink_pkt_rpdev_no_copy_cb(struct rpmsg_device *rpdev, void *buf,
 	unsigned long flags;
 	struct sk_buff *skb;
 
-	skb = alloc_skb(0, GFP_ATOMIC);
-	if (!skb)
-		return -ENOMEM;
+	GLINK_PKT_INFO("Data received on:%s len:%d\n", gpdev->ch_name, len);
 
-	skb->head = buf;
+	skb = alloc_skb(0, GFP_ATOMIC);
+	if (!skb) {
+		GLINK_PKT_ERR("Failed to allocate skb\n");
+		return -ENOMEM;
+	}
+
 	skb->data = buf;
 	skb_reset_tail_pointer(skb);
-	skb_set_end_offset(skb, len);
-	skb_put(skb, len);
+	/* For external buffer, skb->tail and skb->len calculation does not match */
+	skb->len += len;
 
 	spin_lock_irqsave(&gpdev->queue_lock, flags);
 	skb_queue_tail(&gpdev->queue, skb);
@@ -219,6 +227,8 @@ static int glink_pkt_rpdev_no_copy_cb(struct rpmsg_device *rpdev, void *buf,
 
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&gpdev->readq);
+
+	GLINK_PKT_INFO("Data queued on:%s len:%d\n", gpdev->ch_name, len);
 
 	return RPMSG_DEFER;
 }
@@ -230,14 +240,18 @@ static int glink_pkt_rpdev_copy_cb(struct rpmsg_device *rpdev, void *buf,
 	unsigned long flags;
 	struct sk_buff *skb;
 
+	GLINK_PKT_INFO("Data received on:%s len:%d\n", gpdev->ch_name, len);
+
 	if (!gpdev) {
 		GLINK_PKT_ERR("channel is in reset\n");
 		return -ENETRESET;
 	}
 
 	skb = alloc_skb(len, GFP_ATOMIC);
-	if (!skb)
+	if (!skb) {
+		GLINK_PKT_ERR("Failed to allocate skb\n");
 		return -ENOMEM;
+	}
 
 	skb_put_data(skb, buf, len);
 
@@ -247,6 +261,8 @@ static int glink_pkt_rpdev_copy_cb(struct rpmsg_device *rpdev, void *buf,
 
 	/* wake up any blocking processes, waiting for new data */
 	wake_up_interruptible(&gpdev->readq);
+
+	GLINK_PKT_INFO("Data queued on:%s len:%d\n", gpdev->ch_name, len);
 
 	return 0;
 }
@@ -267,6 +283,9 @@ static int glink_pkt_rpdev_sigs(struct rpmsg_device *rpdev, void *priv,
 	struct rpmsg_driver *rpdrv = drv_to_rpdrv(drv);
 	struct glink_pkt_device *gpdev = rpdrv_to_gpdev(rpdrv);
 	unsigned long flags;
+
+	GLINK_PKT_INFO("Received signal new:0x%x old:0x%x on channel:%s\n",
+			new, old, gpdev->ch_name);
 
 	spin_lock_irqsave(&gpdev->queue_lock, flags);
 	gpdev->sig_change = true;
@@ -597,6 +616,7 @@ static __poll_t glink_pkt_poll(struct file *file, poll_table *wait)
 		return POLLHUP | POLLPRI;
 	}
 
+	GLINK_PKT_INFO("Wait for pkt on channel:%s\n", gpdev->ch_name);
 	poll_wait(file, &gpdev->readq, wait);
 
 	mutex_lock(&gpdev->lock);
@@ -618,6 +638,8 @@ static __poll_t glink_pkt_poll(struct file *file, poll_table *wait)
 	mask |= rpmsg_poll(gpdev->rpdev->ept, file, wait);
 
 	mutex_unlock(&gpdev->lock);
+
+	GLINK_PKT_INFO("Exit channel:%s\n", gpdev->ch_name);
 
 	return mask;
 }
@@ -669,10 +691,11 @@ static int glink_pkt_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	if (vma->vm_flags & (VM_WRITE | VM_EXEC))
 		return -EPERM;
-	vma->vm_flags &= ~(VM_MAYWRITE | VM_MAYEXEC);
+
+	vm_flags_clear(vma, VM_MAYWRITE | VM_MAYEXEC);
 
 	/* Instruct vm_insert_page() to not mmap_read_lock(mm) */
-	vma->vm_flags |= VM_MIXEDMAP;
+	vm_flags_set(vma, VM_MIXEDMAP);
 
 	vma->vm_ops = &glink_pkt_vm_ops;
 	return 0;
