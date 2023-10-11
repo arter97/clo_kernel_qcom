@@ -349,3 +349,17 @@
 	regulator-allow-set-load;
 	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
 };
+
+&vreg_l1b_0p8 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
+
+&vreg_l10c_0p8 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
