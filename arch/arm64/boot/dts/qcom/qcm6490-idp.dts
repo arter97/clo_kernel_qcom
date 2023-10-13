@@ -250,6 +250,10 @@
 	status = "okay";
 };
 
+&sdhc_1 {
+	status = "disabled";
+};
+
 &pm8350c_pwm {
 	status = "okay";
 };
