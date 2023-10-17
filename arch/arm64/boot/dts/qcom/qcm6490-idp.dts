@@ -339,3 +339,31 @@
 
 	status = "okay";
 };
+
+&vreg_l7b_2p9 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
+
+&vreg_l9b_1p2 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
+
+&vreg_l1b_0p8 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
+
+&vreg_l10c_0p8 {
+	/delete-property/regulator-min-microvolt;
+	/delete-property/regulator-max-microvolt;
+	regulator-allow-set-load;
+	regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM RPMH_REGULATOR_MODE_HPM>;
+};
