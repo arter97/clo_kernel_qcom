@@ -105,6 +105,8 @@ patternProperties:
           - qcom,q6adm
           - qcom,q6apm
           - qcom,q6prm
+          - qcom,spf_core
+          - qcom,audio-pkt
 
 required:
   - compatible
