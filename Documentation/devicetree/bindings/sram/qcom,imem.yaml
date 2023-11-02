@@ -52,6 +52,21 @@ patternProperties:
     $ref: /schemas/remoteproc/qcom,pil-info.yaml#
     description: Peripheral image loader relocation region
 
+patternProperties:
+  "^kaslr_offset@[0-9a-f]+$":
+  type: object
+  description: Used to store kaslr addr
+  properties:
+    compatible:
+      const: "qcom,msm-imem-kaslr_offset"
+
+    reg:
+      maxItems: 1
+
+  required:
+    - compatible
+    - reg
+
 required:
   - compatible
   - reg
@@ -75,6 +90,11 @@ examples:
             pil-reloc@94c {
                 compatible = "qcom,pil-reloc-info";
                 reg = <0x94c 0xc8>;
+            };
+
+            kaslr_offset@6d0 {
+                compatible = "qcom,msm-imem-kaslr_offset";
+                reg = <0x6d0 12>;
             };
         };
     };
