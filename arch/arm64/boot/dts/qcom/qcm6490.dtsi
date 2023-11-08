@@ -78,6 +78,14 @@
 			reg = <0x0 0xc1800000 0x0 0x3900000>;
 			no-map;
 		};
+
+		adsp_heap_mem: adsp-heap {
+			compatible = "shared-dma-pool";
+			alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
+			reusable;
+			alignment = <0x0 0x400000>;
+			size = <0x0 0xc00000>;
+		};
 	};
 };
 
@@ -183,6 +191,7 @@
 				compatible = "qcom,fastrpc";
 				qcom,glink-channels = "fastrpcglink-apps-dsp";
 				label = "adsp";
+				memory-region = <&adsp_heap_mem>;
 				#address-cells = <1>;
 				#size-cells = <0>;
 
