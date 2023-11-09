@@ -8,8 +8,27 @@
 #include <linux/platform_device.h>
 
 #include "iris_core.h"
+#include "iris_helpers.h"
+#include "iris_hfi.h"
 #include "iris_hfi_queue.h"
 #include "resources.h"
+#include "iris_vidc.h"
+#include "iris_ctrls.h"
+
+static int init_iris_isr(struct iris_core *core)
+{
+	int ret;
+
+	ret = devm_request_threaded_irq(core->dev, core->irq, iris_hfi_isr,
+					iris_hfi_isr_handler, IRQF_TRIGGER_HIGH, "iris", core);
+	if (ret) {
+		dev_err(core->dev, "%s: Failed to allocate iris IRQ\n", __func__);
+		return ret;
+	}
+	disable_irq_nosync(core->irq);
+
+	return ret;
+}
 
 static void iris_unregister_video_device(struct iris_core *core)
 {
@@ -87,6 +106,12 @@ static int iris_probe(struct platform_device *pdev)
 	if (!core->packet)
 		return -ENOMEM;
 
+	core->response_packet = devm_kzalloc(core->dev, core->packet_size, GFP_KERNEL);
+	if (!core->response_packet)
+		return -ENOMEM;
+
+	INIT_LIST_HEAD(&core->instances);
+
 	core->reg_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(core->reg_base))
 		return PTR_ERR(core->reg_base);
@@ -95,10 +120,52 @@ static int iris_probe(struct platform_device *pdev)
 	if (core->irq < 0)
 		return core->irq;
 
+	ret = init_iris_isr(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: Failed to init isr with %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = init_platform(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: init platform failed with %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = init_vpu(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: init vpu failed with %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = init_ops(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: init ops failed with %d\n", __func__, ret);
+		return ret;
+	}
+
 	ret = init_resources(core);
 	if (ret) {
 		dev_err_probe(core->dev, ret,
 			      "%s: init resource failed with %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = iris_init_core_caps(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: init core caps failed with %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = iris_init_instance_caps(core);
+	if (ret) {
+		dev_err_probe(core->dev, ret,
+			      "%s: init inst caps failed with %d\n", __func__, ret);
 		return ret;
 	}
 
@@ -112,12 +179,7 @@ static int iris_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, core);
 
-	/*
-	 * Specify the max value of address space, which can be used
-	 * for buffer transactions.
-	 */
-	dma_mask = DMA_BIT_MASK(32);
-	dma_mask &= ~BIT(29);
+	dma_mask = core->cap[DMA_MASK].value;
 
 	ret = dma_set_mask_and_coherent(dev, dma_mask);
 	if (ret)
@@ -152,7 +214,10 @@ err_v4l2_unreg:
 }
 
 static const struct of_device_id iris_dt_match[] = {
-	{ .compatible = "qcom,sm8550-iris", },
+	{
+		.compatible = "qcom,sm8550-iris",
+		.data = &sm8550_data,
+	},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, iris_dt_match);
@@ -167,5 +232,6 @@ static struct platform_driver qcom_iris_driver = {
 };
 
 module_platform_driver(qcom_iris_driver);
+MODULE_IMPORT_NS(DMA_BUF);
 MODULE_DESCRIPTION("Qualcomm Iris video driver");
 MODULE_LICENSE("GPL");

@@ -11,7 +11,9 @@
 
 #include "iris_hfi_queue.h"
 #include "iris_state.h"
+#include "platform_common.h"
 #include "resources.h"
+#include "vpu_common.h"
 
 /**
  * struct iris_core - holds core parameters valid for all instances
@@ -31,6 +33,8 @@
  * @clk_count: count of iris clocks
  * @reset_tbl: table of iris reset clocks
  * @reset_count: count of iris reset clocks
+ * @vb2_ops: iris vb2 ops
+ * @vb2_mem_ops: iris vb2 memory ops
  * @state: current state of core
  * @iface_q_table: Interface queue table memory
  * @command_queue: shared interface queue to send commands to firmware
@@ -40,9 +44,19 @@
  * @lock: a lock for this strucure
  * @packet: pointer to packet from driver to fw
  * @packet_size: size of packet
+ * @response_packet: a pointer to response packet from fw to driver
  * @sys_init_id: id of sys init packet
  * @header_id: id of packet header
  * @packet_id: id of packet
+ * @vpu_ops: a pointer to vpu ops
+ * @dec_codecs_count: supported codec count for decoder
+ * @platform_data: a structure for platform data
+ * @cap: an array for supported core capabilities
+ * @inst_caps: a pointer to supported instance capabilities
+ * @instances: a list_head of all instances
+ * @intr_status: interrupt status
+ * @spur_count: counter for spurious interrupt
+ * @reg_count: counter for interrupts
  */
 
 struct iris_core {
@@ -61,6 +75,8 @@ struct iris_core {
 	u32					clk_count;
 	struct reset_info			*reset_tbl;
 	u32					reset_count;
+	const struct vb2_ops			*vb2_ops;
+	struct vb2_mem_ops			*vb2_mem_ops;
 	enum iris_core_state			state;
 	struct mem_desc				iface_q_table;
 	struct iface_q_info			command_queue;
@@ -70,12 +86,24 @@ struct iris_core {
 	struct mutex				lock; /* lock for core structure */
 	u8					*packet;
 	u32					packet_size;
+	u8					*response_packet;
 	u32					sys_init_id;
 	u32					header_id;
 	u32					packet_id;
+	const struct vpu_ops			*vpu_ops;
+	u32					dec_codecs_count;
+	struct platform_data			*platform_data;
+	struct plat_core_cap			cap[CORE_CAP_MAX + 1];
+	struct plat_inst_caps			*inst_caps;
+	struct list_head			instances;
+	u32					intr_status;
+	u32					spur_count;
+	u32					reg_count;
 };
 
 int iris_core_init(struct iris_core *core);
+int iris_core_init_wait(struct iris_core *core);
 int iris_core_deinit(struct iris_core *core);
+int iris_core_deinit_locked(struct iris_core *core);
 
 #endif

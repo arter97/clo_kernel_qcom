@@ -1,0 +1,65 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#ifndef _IRIS_INSTANCE_H_
+#define _IRIS_INSTANCE_H_
+
+#include <media/v4l2-ctrls.h>
+
+#include "iris_buffer.h"
+#include "iris_common.h"
+#include "iris_core.h"
+#include "iris_common.h"
+#include "platform_common.h"
+
+/**
+ * struct iris_inst - holds per video instance parameters
+ *
+ * @list: used for attach an instance to the core
+ * @core: pointer to core structure
+ * @session_id: id of current video session
+ * @vb2q_src: source vb2 queue
+ * @vb2q_dst: destination vb2 queue
+ * @ctx_q_lock: lock to serialize queues related ioctls
+ * @fh: reference of v4l2 file handler
+ * @fmt_src: structure of v4l2_format for source
+ * @fmt_dst: structure of v4l2_format for destination
+ * @ctrl_handler: reference of v4l2 ctrl handler
+ * @crop: structure of crop info
+ * @packet: HFI packet
+ * @packet_size: HFI packet size
+ * @completions: structure of signal completions
+ * @cap: array of supported instance capabilities
+ * @num_ctrls: supported number of controls
+ * @caps_list: list head of capability
+ * @codec: codec type
+ * @mem_pool: pointer to memory pool of buffers
+ * @buffers: structure of buffer info
+ */
+
+struct iris_inst {
+	struct list_head		list;
+	struct iris_core		*core;
+	u32				session_id;
+	struct vb2_queue		*vb2q_src;
+	struct vb2_queue		*vb2q_dst;
+	struct mutex			ctx_q_lock;/* lock to serialize queues related ioctls */
+	struct v4l2_fh			fh;
+	struct v4l2_format		*fmt_src;
+	struct v4l2_format		*fmt_dst;
+	struct v4l2_ctrl_handler	ctrl_handler;
+	struct rect_desc		crop;
+	void				*packet;
+	u32				packet_size;
+	struct completion		completions[MAX_SIGNAL];
+	struct plat_inst_cap		cap[INST_CAP_MAX + 1];
+	u32				num_ctrls;
+	struct list_head		caps_list;
+	enum codec_type			codec;
+	struct iris_mem_pool		*mem_pool;
+	struct iris_buffers_info	buffers;
+};
+
+#endif
