@@ -40,6 +40,7 @@
  * @buffers: structure of buffer info
  * @fw_min_count: minimnum count of buffers needed by fw
  * @state: instance state
+ * @sub_state: instance sub state
  * @ipsc_properties_set: boolean to set ipsc properties to fw
  * @opsc_properties_set: boolean to set opsc properties to fw
  * @hfi_frame_info: structure of frame info
@@ -47,6 +48,11 @@
  * @dst_subcr_params: subscription params to fw on output port
  * @dpb_list_payload: array of dpb buffers
  * @once_per_session_set: boolean to set once per session property
+ * @max_rate: max input rate
+ * @max_input_data_size: max size of input data
+ * @power: structure of power info
+ * @bus_data: structure of bus data
+ * @input_timer_list: list head of input timer
  */
 
 struct iris_inst {
@@ -73,6 +79,7 @@ struct iris_inst {
 	struct iris_buffers_info	buffers;
 	u32				fw_min_count;
 	enum iris_inst_state		state;
+	enum iris_inst_sub_state	sub_state;
 	bool				ipsc_properties_set;
 	bool				opsc_properties_set;
 	struct iris_hfi_frame_info	hfi_frame_info;
@@ -80,6 +87,11 @@ struct iris_inst {
 	struct subscription_params	dst_subcr_params;
 	u32				dpb_list_payload[MAX_DPB_LIST_ARRAY_SIZE];
 	bool				once_per_session_set;
+	u32				max_rate;
+	u32				max_input_data_size;
+	struct iris_inst_power		power;
+	struct bus_vote_data		bus_data;
+	struct list_head		input_timer_list;
 };
 
 #endif

@@ -25,8 +25,12 @@ struct iris_inst;
 
 #define NUM_MBS_4k (((4096 + 15) >> 4) * ((2304 + 15) >> 4))
 
+#define MAX_DPB_COUNT 32
+
 #define MAX_DPB_LIST_ARRAY_SIZE (16 * 4)
 #define MAX_DPB_LIST_PAYLOAD_SIZE (16 * 4 * 4)
+
+#define INPUT_TIMER_LIST_SIZE 30
 
 enum codec_type {
 	H264	= BIT(0),
@@ -69,6 +73,14 @@ enum iris_buffer_type {
 	BUF_DPB,
 	BUF_PERSIST,
 	BUF_VPSS,
+};
+
+enum iris_buffer_flags {
+	BUF_FLAG_KEYFRAME	= 0x00000008,
+	BUF_FLAG_PFRAME		= 0x00000010,
+	BUF_FLAG_BFRAME		= 0x00000020,
+	BUF_FLAG_ERROR		= 0x00000040,
+	BUF_FLAG_LAST		= 0x00100000,
 };
 
 enum iris_buffer_attributes {
@@ -118,6 +130,11 @@ struct iris_hfi_frame_info {
 	u32	no_output;
 	u32	data_corrupt;
 	u32	overflow;
+};
+
+struct iris_input_timer {
+	struct list_head	list;
+	u64			time_us;
 };
 
 #endif
