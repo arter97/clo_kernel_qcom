@@ -49,6 +49,7 @@
  * @header_id: id of packet header
  * @packet_id: id of packet
  * @vpu_ops: a pointer to vpu ops
+ * @session_ops: a pointer to session level ops
  * @dec_codecs_count: supported codec count for decoder
  * @platform_data: a structure for platform data
  * @cap: an array for supported core capabilities
@@ -57,6 +58,7 @@
  * @intr_status: interrupt status
  * @spur_count: counter for spurious interrupt
  * @reg_count: counter for interrupts
+ * @fw_version: firmware version
  */
 
 struct iris_core {
@@ -91,6 +93,7 @@ struct iris_core {
 	u32					header_id;
 	u32					packet_id;
 	const struct vpu_ops			*vpu_ops;
+	const struct vpu_session_ops		*session_ops;
 	u32					dec_codecs_count;
 	struct platform_data			*platform_data;
 	struct plat_core_cap			cap[CORE_CAP_MAX + 1];
@@ -99,6 +102,7 @@ struct iris_core {
 	u32					intr_status;
 	u32					spur_count;
 	u32					reg_count;
+	char					fw_version[IRIS_VERSION_LENGTH];
 };
 
 int iris_core_init(struct iris_core *core);

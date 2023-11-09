@@ -69,3 +69,165 @@ int iris_change_core_state(struct iris_core *core,
 
 	return ret;
 }
+
+struct iris_inst_state_change_allow {
+	enum iris_inst_state        from;
+	enum iris_inst_state        to;
+	enum state_change           allow;
+};
+
+static enum state_change iris_allow_inst_state_change(struct iris_inst *inst,
+						      enum iris_inst_state req_state)
+{
+	enum state_change allow = STATE_CHANGE_ALLOW;
+	int cnt;
+	static struct iris_inst_state_change_allow state[] = {
+		/* from, to, allow */
+		{IRIS_INST_OPEN,             IRIS_INST_OPEN,               STATE_CHANGE_IGNORE    },
+		{IRIS_INST_OPEN,             IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OPEN,             IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OPEN,             IRIS_INST_STREAMING,          STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_OPEN,             IRIS_INST_CLOSE,              STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OPEN,             IRIS_INST_ERROR,              STATE_CHANGE_ALLOW     },
+
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_OPEN,               STATE_CHANGE_ALLOW     },
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_IGNORE    },
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_STREAMING,          STATE_CHANGE_ALLOW     },
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_CLOSE,              STATE_CHANGE_ALLOW     },
+		{IRIS_INST_INPUT_STREAMING,  IRIS_INST_ERROR,              STATE_CHANGE_ALLOW     },
+
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_OPEN,               STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_IGNORE    },
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_STREAMING,          STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_CLOSE,              STATE_CHANGE_ALLOW     },
+		{IRIS_INST_OUTPUT_STREAMING, IRIS_INST_ERROR,              STATE_CHANGE_ALLOW     },
+
+		{IRIS_INST_STREAMING,        IRIS_INST_OPEN,               STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_STREAMING,        IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_ALLOW     },
+		{IRIS_INST_STREAMING,        IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_ALLOW     },
+		{IRIS_INST_STREAMING,        IRIS_INST_STREAMING,          STATE_CHANGE_IGNORE    },
+		{IRIS_INST_STREAMING,        IRIS_INST_CLOSE,              STATE_CHANGE_ALLOW     },
+		{IRIS_INST_STREAMING,        IRIS_INST_ERROR,              STATE_CHANGE_ALLOW     },
+
+		{IRIS_INST_CLOSE,            IRIS_INST_OPEN,               STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_CLOSE,            IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_CLOSE,            IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_CLOSE,            IRIS_INST_STREAMING,          STATE_CHANGE_DISALLOW  },
+		{IRIS_INST_CLOSE,            IRIS_INST_CLOSE,              STATE_CHANGE_IGNORE    },
+		{IRIS_INST_CLOSE,            IRIS_INST_ERROR,              STATE_CHANGE_IGNORE    },
+
+		{IRIS_INST_ERROR,            IRIS_INST_OPEN,               STATE_CHANGE_IGNORE    },
+		{IRIS_INST_ERROR,            IRIS_INST_INPUT_STREAMING,    STATE_CHANGE_IGNORE    },
+		{IRIS_INST_ERROR,            IRIS_INST_OUTPUT_STREAMING,   STATE_CHANGE_IGNORE    },
+		{IRIS_INST_ERROR,            IRIS_INST_STREAMING,          STATE_CHANGE_IGNORE    },
+		{IRIS_INST_ERROR,            IRIS_INST_CLOSE,              STATE_CHANGE_IGNORE    },
+		{IRIS_INST_ERROR,            IRIS_INST_ERROR,              STATE_CHANGE_IGNORE    },
+	};
+
+	for (cnt = 0; cnt < ARRAY_SIZE(state); cnt++) {
+		if (state[cnt].from == inst->state && state[cnt].to == req_state) {
+			allow = state[cnt].allow;
+			break;
+		}
+	}
+
+	return allow;
+}
+
+int iris_inst_change_state(struct iris_inst *inst,
+			   enum iris_inst_state request_state)
+{
+	enum state_change allow;
+
+	if (IS_SESSION_ERROR(inst))
+		return 0;
+
+	if (inst->state == request_state)
+		return 0;
+
+	allow = iris_allow_inst_state_change(inst, request_state);
+	if (allow != STATE_CHANGE_ALLOW)
+		return (allow == STATE_CHANGE_DISALLOW ? -EINVAL : 0);
+
+	inst->state = request_state;
+
+	return 0;
+}
+
+bool allow_s_fmt(struct iris_inst *inst, u32 type)
+{
+	return (inst->state == IRIS_INST_OPEN) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_INPUT_STREAMING) ||
+		(type == INPUT_MPLANE && inst->state == IRIS_INST_OUTPUT_STREAMING);
+}
+
+bool allow_reqbufs(struct iris_inst *inst, u32 type)
+{
+	return (inst->state == IRIS_INST_OPEN) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_INPUT_STREAMING) ||
+		(type == INPUT_MPLANE && inst->state == IRIS_INST_OUTPUT_STREAMING);
+}
+
+bool allow_streamon(struct iris_inst *inst, u32 type)
+{
+	return (type == INPUT_MPLANE && inst->state == IRIS_INST_OPEN) ||
+		(type == INPUT_MPLANE && inst->state == IRIS_INST_OUTPUT_STREAMING) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_OPEN) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_INPUT_STREAMING);
+}
+
+bool allow_streamoff(struct iris_inst *inst, u32 type)
+{
+	return (type == INPUT_MPLANE && inst->state == IRIS_INST_INPUT_STREAMING) ||
+		(type == INPUT_MPLANE && inst->state == IRIS_INST_STREAMING) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_OUTPUT_STREAMING) ||
+		(type == OUTPUT_MPLANE && inst->state == IRIS_INST_STREAMING);
+}
+
+bool allow_s_ctrl(struct iris_inst *inst, u32 cap_id)
+{
+	return ((inst->state == IRIS_INST_OPEN) ||
+		((inst->cap[cap_id].flags & CAP_FLAG_DYNAMIC_ALLOWED) &&
+		(inst->state == IRIS_INST_INPUT_STREAMING ||
+		inst->state == IRIS_INST_STREAMING)));
+}
+
+int iris_inst_state_change_streamon(struct iris_inst *inst, u32 plane)
+{
+	enum iris_inst_state new_state = IRIS_INST_ERROR;
+
+	if (plane == INPUT_MPLANE) {
+		if (inst->state == IRIS_INST_OPEN)
+			new_state = IRIS_INST_INPUT_STREAMING;
+		else if (inst->state == IRIS_INST_OUTPUT_STREAMING)
+			new_state = IRIS_INST_STREAMING;
+	} else if (plane == OUTPUT_MPLANE) {
+		if (inst->state == IRIS_INST_OPEN)
+			new_state = IRIS_INST_OUTPUT_STREAMING;
+		else if (inst->state == IRIS_INST_INPUT_STREAMING)
+			new_state = IRIS_INST_STREAMING;
+	}
+
+	return iris_inst_change_state(inst, new_state);
+}
+
+int iris_inst_state_change_streamoff(struct iris_inst *inst, u32 plane)
+{
+	enum iris_inst_state new_state = IRIS_INST_ERROR;
+
+	if (plane == INPUT_MPLANE) {
+		if (inst->state == IRIS_INST_INPUT_STREAMING)
+			new_state = IRIS_INST_OPEN;
+		else if (inst->state == IRIS_INST_STREAMING)
+			new_state = IRIS_INST_OUTPUT_STREAMING;
+	} else if (plane == OUTPUT_MPLANE) {
+		if (inst->state == IRIS_INST_OUTPUT_STREAMING)
+			new_state = IRIS_INST_OPEN;
+		else if (inst->state == IRIS_INST_STREAMING)
+			new_state = IRIS_INST_INPUT_STREAMING;
+	}
+
+	return iris_inst_change_state(inst, new_state);
+}

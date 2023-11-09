@@ -106,8 +106,6 @@ enum plat_inst_cap_type {
 	FRAME_HEIGHT,
 	PIX_FMTS,
 	MBPF,
-	FRAME_RATE,
-	OPERATING_RATE,
 	QUEUED_RATE,
 	MB_CYCLES_VSP,
 	MB_CYCLES_VPP,
@@ -165,6 +163,23 @@ struct plat_inst_caps {
 	struct plat_inst_cap cap[INST_CAP_MAX + 1];
 };
 
+struct codec_info {
+	u32 v4l2_codec;
+	enum codec_type codec;
+};
+
+struct color_format_info {
+	u32 v4l2_color_format;
+	enum colorformat_type color_format;
+};
+
+struct format_capability {
+	struct codec_info *codec_info;
+	u32 codec_info_size;
+	struct color_format_info *color_format_info;
+	u32 color_format_info_size;
+};
+
 struct platform_data {
 	const struct bus_info *bus_tbl;
 	unsigned int bus_tbl_size;
@@ -181,12 +196,27 @@ struct platform_data {
 	const struct reg_preset_info *reg_prst_tbl;
 	unsigned int reg_prst_tbl_size;
 	struct ubwc_config_data *ubwc_config;
+	struct format_capability *format_data;
 	const char *fwname;
 	u32 pas_id;
 	struct plat_core_cap *core_data;
 	u32 core_data_size;
 	struct plat_inst_cap *inst_cap_data;
 	u32 inst_cap_data_size;
+	const u32 *avc_subscribe_param;
+	unsigned int avc_subscribe_param_size;
+	const u32 *hevc_subscribe_param;
+	unsigned int hevc_subscribe_param_size;
+	const u32 *vp9_subscribe_param;
+	unsigned int vp9_subscribe_param_size;
+	const u32 *dec_input_prop;
+	unsigned int dec_input_prop_size;
+	const u32 *dec_output_prop_avc;
+	unsigned int dec_output_prop_size_avc;
+	const u32 *dec_output_prop_hevc;
+	unsigned int dec_output_prop_size_hevc;
+	const u32 *dec_output_prop_vp9;
+	unsigned int dec_output_prop_size_vp9;
 };
 
 int init_platform(struct iris_core *core);

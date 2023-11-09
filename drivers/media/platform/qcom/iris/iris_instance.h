@@ -23,6 +23,7 @@
  * @vb2q_src: source vb2 queue
  * @vb2q_dst: destination vb2 queue
  * @ctx_q_lock: lock to serialize queues related ioctls
+ * @lock: lock to seralise forward and reverse threads
  * @fh: reference of v4l2 file handler
  * @fmt_src: structure of v4l2_format for source
  * @fmt_dst: structure of v4l2_format for destination
@@ -37,6 +38,15 @@
  * @codec: codec type
  * @mem_pool: pointer to memory pool of buffers
  * @buffers: structure of buffer info
+ * @fw_min_count: minimnum count of buffers needed by fw
+ * @state: instance state
+ * @ipsc_properties_set: boolean to set ipsc properties to fw
+ * @opsc_properties_set: boolean to set opsc properties to fw
+ * @hfi_frame_info: structure of frame info
+ * @src_subcr_params: subscription params to fw on input port
+ * @dst_subcr_params: subscription params to fw on output port
+ * @dpb_list_payload: array of dpb buffers
+ * @once_per_session_set: boolean to set once per session property
  */
 
 struct iris_inst {
@@ -46,6 +56,7 @@ struct iris_inst {
 	struct vb2_queue		*vb2q_src;
 	struct vb2_queue		*vb2q_dst;
 	struct mutex			ctx_q_lock;/* lock to serialize queues related ioctls */
+	struct mutex			lock;
 	struct v4l2_fh			fh;
 	struct v4l2_format		*fmt_src;
 	struct v4l2_format		*fmt_dst;
@@ -60,6 +71,15 @@ struct iris_inst {
 	enum codec_type			codec;
 	struct iris_mem_pool		*mem_pool;
 	struct iris_buffers_info	buffers;
+	u32				fw_min_count;
+	enum iris_inst_state		state;
+	bool				ipsc_properties_set;
+	bool				opsc_properties_set;
+	struct iris_hfi_frame_info	hfi_frame_info;
+	struct subscription_params	src_subcr_params;
+	struct subscription_params	dst_subcr_params;
+	u32				dpb_list_payload[MAX_DPB_LIST_ARRAY_SIZE];
+	bool				once_per_session_set;
 };
 
 #endif

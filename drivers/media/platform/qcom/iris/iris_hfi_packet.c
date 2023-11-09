@@ -4,8 +4,337 @@
  */
 
 #include "iris_core.h"
+#include "iris_helpers.h"
 #include "iris_hfi_packet.h"
 #include "hfi_defines.h"
+
+u32 get_hfi_port_from_buffer_type(enum iris_buffer_type buffer_type)
+{
+	u32 hfi_port = HFI_PORT_NONE;
+
+	switch (buffer_type) {
+	case BUF_INPUT:
+	case BUF_BIN:
+	case BUF_COMV:
+	case BUF_NON_COMV:
+	case BUF_LINE:
+		hfi_port = HFI_PORT_BITSTREAM;
+		break;
+	case BUF_OUTPUT:
+	case BUF_DPB:
+		hfi_port = HFI_PORT_RAW;
+		break;
+	case BUF_PERSIST:
+		hfi_port = HFI_PORT_NONE;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_port;
+}
+
+u32 get_hfi_port(u32 plane)
+{
+	u32 hfi_port = HFI_PORT_NONE;
+
+	switch (plane) {
+	case INPUT_MPLANE:
+		hfi_port = HFI_PORT_BITSTREAM;
+		break;
+	case OUTPUT_MPLANE:
+		hfi_port = HFI_PORT_RAW;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_port;
+}
+
+static u32 hfi_buf_type_from_driver(enum iris_buffer_type buffer_type)
+{
+	switch (buffer_type) {
+	case BUF_INPUT:
+		return HFI_BUFFER_BITSTREAM;
+	case BUF_OUTPUT:
+		return HFI_BUFFER_RAW;
+	case BUF_BIN:
+		return HFI_BUFFER_BIN;
+	case BUF_COMV:
+		return HFI_BUFFER_COMV;
+	case BUF_NON_COMV:
+		return HFI_BUFFER_NON_COMV;
+	case BUF_LINE:
+		return HFI_BUFFER_LINE;
+	case BUF_DPB:
+		return HFI_BUFFER_DPB;
+	case BUF_PERSIST:
+		return HFI_BUFFER_PERSIST;
+	default:
+		return 0;
+	}
+}
+
+u32 get_hfi_codec(struct iris_inst *inst)
+{
+	switch (inst->codec) {
+	case H264:
+		return HFI_CODEC_DECODE_AVC;
+	case HEVC:
+		return HFI_CODEC_DECODE_HEVC;
+	case VP9:
+		return HFI_CODEC_DECODE_VP9;
+	default:
+		return 0;
+	}
+}
+
+u32 get_hfi_colorformat(u32 colorformat)
+{
+	u32 hfi_colorformat = HFI_COLOR_FMT_NV12_UBWC;
+
+	switch (colorformat) {
+	case V4L2_PIX_FMT_NV12:
+		hfi_colorformat = HFI_COLOR_FMT_NV12;
+		break;
+	case V4L2_PIX_FMT_QC08C:
+		hfi_colorformat = HFI_COLOR_FMT_NV12_UBWC;
+		break;
+	case V4L2_PIX_FMT_QC10C:
+		hfi_colorformat = HFI_COLOR_FMT_TP10_UBWC;
+		break;
+	case V4L2_PIX_FMT_NV21:
+		hfi_colorformat = HFI_COLOR_FMT_NV21;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_colorformat;
+}
+
+u32 get_hfi_color_primaries(u32 primaries)
+{
+	u32 hfi_primaries = HFI_PRIMARIES_RESERVED;
+
+	switch (primaries) {
+	case V4L2_COLORSPACE_DEFAULT:
+		hfi_primaries = HFI_PRIMARIES_RESERVED;
+		break;
+	case V4L2_COLORSPACE_REC709:
+		hfi_primaries = HFI_PRIMARIES_BT709;
+		break;
+	case V4L2_COLORSPACE_470_SYSTEM_M:
+		hfi_primaries = HFI_PRIMARIES_BT470_SYSTEM_M;
+		break;
+	case V4L2_COLORSPACE_470_SYSTEM_BG:
+		hfi_primaries = HFI_PRIMARIES_BT470_SYSTEM_BG;
+		break;
+	case V4L2_COLORSPACE_SMPTE170M:
+		hfi_primaries = HFI_PRIMARIES_BT601_525;
+		break;
+	case V4L2_COLORSPACE_SMPTE240M:
+		hfi_primaries = HFI_PRIMARIES_SMPTE_ST240M;
+		break;
+	case V4L2_COLORSPACE_BT2020:
+		hfi_primaries = HFI_PRIMARIES_BT2020;
+		break;
+	case V4L2_COLORSPACE_DCI_P3:
+		hfi_primaries = HFI_PRIMARIES_SMPTE_RP431_2;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_primaries;
+}
+
+u32 get_hfi_transer_char(u32 characterstics)
+{
+	u32 hfi_characterstics = HFI_TRANSFER_RESERVED;
+
+	switch (characterstics) {
+	case V4L2_XFER_FUNC_DEFAULT:
+		hfi_characterstics = HFI_TRANSFER_RESERVED;
+		break;
+	case V4L2_XFER_FUNC_709:
+		hfi_characterstics = HFI_TRANSFER_BT709;
+		break;
+	case V4L2_XFER_FUNC_SMPTE240M:
+		hfi_characterstics = HFI_TRANSFER_SMPTE_ST240M;
+		break;
+	case V4L2_XFER_FUNC_SRGB:
+		hfi_characterstics = HFI_TRANSFER_SRGB_SYCC;
+		break;
+	case V4L2_XFER_FUNC_SMPTE2084:
+		hfi_characterstics = HFI_TRANSFER_SMPTE_ST2084_PQ;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_characterstics;
+}
+
+u32 get_hfi_matrix_coefficients(u32 coefficients)
+{
+	u32 hfi_coefficients = HFI_MATRIX_COEFF_RESERVED;
+
+	switch (coefficients) {
+	case V4L2_YCBCR_ENC_DEFAULT:
+		hfi_coefficients = HFI_MATRIX_COEFF_RESERVED;
+		break;
+	case V4L2_YCBCR_ENC_709:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT709;
+		break;
+	case V4L2_YCBCR_ENC_XV709:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT709;
+		break;
+	case V4L2_YCBCR_ENC_XV601:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT470_SYS_BG_OR_BT601_625;
+		break;
+	case V4L2_YCBCR_ENC_601:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT601_525_BT1358_525_OR_625;
+		break;
+	case V4L2_YCBCR_ENC_SMPTE240M:
+		hfi_coefficients = HFI_MATRIX_COEFF_SMPTE_ST240;
+		break;
+	case V4L2_YCBCR_ENC_BT2020:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT2020_NON_CONSTANT;
+		break;
+	case V4L2_YCBCR_ENC_BT2020_CONST_LUM:
+		hfi_coefficients = HFI_MATRIX_COEFF_BT2020_CONSTANT;
+		break;
+	default:
+		break;
+	}
+
+	return hfi_coefficients;
+}
+
+u32 get_v4l2_color_primaries(u32 hfi_primaries)
+{
+	u32 primaries = V4L2_COLORSPACE_DEFAULT;
+
+	switch (hfi_primaries) {
+	case HFI_PRIMARIES_RESERVED:
+		primaries = V4L2_COLORSPACE_DEFAULT;
+		break;
+	case HFI_PRIMARIES_BT709:
+		primaries = V4L2_COLORSPACE_REC709;
+		break;
+	case HFI_PRIMARIES_BT470_SYSTEM_M:
+		primaries = V4L2_COLORSPACE_470_SYSTEM_M;
+		break;
+	case HFI_PRIMARIES_BT470_SYSTEM_BG:
+		primaries = V4L2_COLORSPACE_470_SYSTEM_BG;
+		break;
+	case HFI_PRIMARIES_BT601_525:
+		primaries = V4L2_COLORSPACE_SMPTE170M;
+		break;
+	case HFI_PRIMARIES_SMPTE_ST240M:
+		primaries = V4L2_COLORSPACE_SMPTE240M;
+		break;
+	case HFI_PRIMARIES_BT2020:
+		primaries = V4L2_COLORSPACE_BT2020;
+		break;
+	case V4L2_COLORSPACE_DCI_P3:
+		primaries = HFI_PRIMARIES_SMPTE_RP431_2;
+		break;
+	default:
+		break;
+	}
+
+	return primaries;
+}
+
+u32 get_v4l2_transer_char(u32 hfi_characterstics)
+{
+	u32 characterstics = V4L2_XFER_FUNC_DEFAULT;
+
+	switch (hfi_characterstics) {
+	case HFI_TRANSFER_RESERVED:
+		characterstics = V4L2_XFER_FUNC_DEFAULT;
+		break;
+	case HFI_TRANSFER_BT709:
+		characterstics = V4L2_XFER_FUNC_709;
+		break;
+	case HFI_TRANSFER_SMPTE_ST240M:
+		characterstics = V4L2_XFER_FUNC_SMPTE240M;
+		break;
+	case HFI_TRANSFER_SRGB_SYCC:
+		characterstics = V4L2_XFER_FUNC_SRGB;
+		break;
+	case HFI_TRANSFER_SMPTE_ST2084_PQ:
+		characterstics = V4L2_XFER_FUNC_SMPTE2084;
+		break;
+	default:
+		break;
+	}
+
+	return characterstics;
+}
+
+u32 get_v4l2_matrix_coefficients(u32 hfi_coefficients)
+{
+	u32 coefficients = V4L2_YCBCR_ENC_DEFAULT;
+
+	switch (hfi_coefficients) {
+	case HFI_MATRIX_COEFF_RESERVED:
+		coefficients = V4L2_YCBCR_ENC_DEFAULT;
+		break;
+	case HFI_MATRIX_COEFF_BT709:
+		coefficients = V4L2_YCBCR_ENC_709;
+		break;
+	case HFI_MATRIX_COEFF_BT470_SYS_BG_OR_BT601_625:
+		coefficients = V4L2_YCBCR_ENC_XV601;
+		break;
+	case HFI_MATRIX_COEFF_BT601_525_BT1358_525_OR_625:
+		coefficients = V4L2_YCBCR_ENC_601;
+		break;
+	case HFI_MATRIX_COEFF_SMPTE_ST240:
+		coefficients = V4L2_YCBCR_ENC_SMPTE240M;
+		break;
+	case HFI_MATRIX_COEFF_BT2020_NON_CONSTANT:
+		coefficients = V4L2_YCBCR_ENC_BT2020;
+		break;
+	case HFI_MATRIX_COEFF_BT2020_CONSTANT:
+		coefficients = V4L2_YCBCR_ENC_BT2020_CONST_LUM;
+		break;
+	default:
+		break;
+	}
+
+	return coefficients;
+}
+
+int get_hfi_buffer(struct iris_buffer *buffer, struct hfi_buffer *buf)
+{
+	memset(buf, 0, sizeof(*buf));
+	buf->type = hfi_buf_type_from_driver(buffer->type);
+	buf->index = buffer->index;
+	buf->base_address = buffer->device_addr;
+	buf->addr_offset = 0;
+	buf->buffer_size = buffer->buffer_size;
+	/*
+	 * for decoder input buffers, firmware (BSE HW) needs 256 aligned
+	 * buffer size otherwise it will truncate or ignore the data after 256
+	 * aligned size which may lead to error concealment
+	 */
+	if (buffer->type == BUF_INPUT)
+		buf->buffer_size = ALIGN(buffer->buffer_size, 256);
+	buf->data_offset = buffer->data_offset;
+	buf->data_size = buffer->data_size;
+	if (buffer->attr & BUF_ATTR_READ_ONLY)
+		buf->flags |= HFI_BUF_HOST_FLAG_READONLY;
+	if (buffer->attr & BUF_ATTR_PENDING_RELEASE)
+		buf->flags |= HFI_BUF_HOST_FLAG_RELEASE;
+	buf->flags |= HFI_BUF_HOST_FLAGS_CB_NON_SECURE;
+	buf->timestamp = buffer->timestamp;
+
+	return 0;
+}
 
 static int hfi_create_header(u8 *packet, u32 packet_size, u32 session_id,
 			     u32 header_id)

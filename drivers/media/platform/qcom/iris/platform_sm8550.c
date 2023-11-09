@@ -19,6 +19,40 @@
 #define MINIMUM_FPS         1
 #define MAXIMUM_FPS       480
 
+static struct codec_info codec_data_sm8550[] = {
+	{
+		.v4l2_codec  = V4L2_PIX_FMT_H264,
+		.codec  = H264,
+	},
+	{
+		.v4l2_codec  = V4L2_PIX_FMT_HEVC,
+		.codec  = HEVC,
+	},
+	{
+		.v4l2_codec  = V4L2_PIX_FMT_VP9,
+		.codec  = VP9,
+	},
+};
+
+static struct color_format_info color_format_data_sm8550[] = {
+	{
+		.v4l2_color_format = V4L2_PIX_FMT_NV12,
+		.color_format = FMT_NV12,
+	},
+	{
+		.v4l2_color_format = V4L2_PIX_FMT_NV21,
+		.color_format = FMT_NV21,
+	},
+	{
+		.v4l2_color_format = V4L2_PIX_FMT_QC08C,
+		.color_format = FMT_NV12C,
+	},
+	{
+		.v4l2_color_format = V4L2_PIX_FMT_QC10C,
+		.color_format = FMT_TP10C,
+	},
+};
+
 static struct plat_core_cap core_data_sm8550[] = {
 	{DEC_CODECS, H264 | HEVC | VP9},
 	{MAX_SESSION_COUNT, 16},
@@ -331,6 +365,64 @@ static struct ubwc_config_data ubwc_config_sm8550[] = {
 	UBWC_CONFIG(8, 32, 16, 0, 1, 1, 1),
 };
 
+static struct format_capability format_data_sm8550 = {
+	.codec_info = codec_data_sm8550,
+	.codec_info_size = ARRAY_SIZE(codec_data_sm8550),
+	.color_format_info = color_format_data_sm8550,
+	.color_format_info_size = ARRAY_SIZE(color_format_data_sm8550),
+};
+
+static const u32 sm8550_vdec_src_change_param_avc[] = {
+	HFI_PROP_BITSTREAM_RESOLUTION,
+	HFI_PROP_CROP_OFFSETS,
+	HFI_PROP_CODED_FRAMES,
+	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
+	HFI_PROP_PIC_ORDER_CNT_TYPE,
+	HFI_PROP_PROFILE,
+	HFI_PROP_LEVEL,
+	HFI_PROP_SIGNAL_COLOR_INFO,
+};
+
+static const u32 sm8550_vdec_src_change_param_hevc[] = {
+	HFI_PROP_BITSTREAM_RESOLUTION,
+	HFI_PROP_CROP_OFFSETS,
+	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
+	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
+	HFI_PROP_PROFILE,
+	HFI_PROP_LEVEL,
+	HFI_PROP_TIER,
+	HFI_PROP_SIGNAL_COLOR_INFO,
+};
+
+static const u32 sm8550_vdec_src_change_param_vp9[] = {
+	HFI_PROP_BITSTREAM_RESOLUTION,
+	HFI_PROP_CROP_OFFSETS,
+	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
+	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
+	HFI_PROP_PROFILE,
+	HFI_PROP_LEVEL,
+};
+
+static const u32 sm8550_vdec_input_properties[] = {
+	HFI_PROP_NO_OUTPUT,
+};
+
+static const u32 sm8550_vdec_output_properties_avc[] = {
+	HFI_PROP_PICTURE_TYPE,
+	HFI_PROP_DPB_LIST,
+	HFI_PROP_CABAC_SESSION,
+};
+
+static const u32 sm8550_vdec_output_properties_hevc[] = {
+	HFI_PROP_PICTURE_TYPE,
+	HFI_PROP_DPB_LIST,
+};
+
+static const u32 sm8550_vdec_output_properties_vp9[] = {
+	HFI_PROP_PICTURE_TYPE,
+	HFI_PROP_DPB_LIST,
+};
+
 struct platform_data sm8550_data = {
 	.bus_tbl = sm8550_bus_table,
 	.bus_tbl_size = ARRAY_SIZE(sm8550_bus_table),
@@ -357,4 +449,26 @@ struct platform_data sm8550_data = {
 	.inst_cap_data = instance_cap_data_sm8550,
 	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_sm8550),
 	.ubwc_config = ubwc_config_sm8550,
+	.format_data = &format_data_sm8550,
+
+	.avc_subscribe_param =
+		sm8550_vdec_src_change_param_avc,
+	.avc_subscribe_param_size =
+		ARRAY_SIZE(sm8550_vdec_src_change_param_avc),
+	.hevc_subscribe_param =
+		sm8550_vdec_src_change_param_hevc,
+	.hevc_subscribe_param_size =
+		ARRAY_SIZE(sm8550_vdec_src_change_param_hevc),
+	.vp9_subscribe_param =
+		sm8550_vdec_src_change_param_vp9,
+	.vp9_subscribe_param_size =
+		ARRAY_SIZE(sm8550_vdec_src_change_param_vp9),
+	.dec_input_prop = sm8550_vdec_input_properties,
+	.dec_input_prop_size = ARRAY_SIZE(sm8550_vdec_input_properties),
+	.dec_output_prop_avc = sm8550_vdec_output_properties_avc,
+	.dec_output_prop_size_avc = ARRAY_SIZE(sm8550_vdec_output_properties_avc),
+	.dec_output_prop_hevc = sm8550_vdec_output_properties_hevc,
+	.dec_output_prop_size_hevc = ARRAY_SIZE(sm8550_vdec_output_properties_hevc),
+	.dec_output_prop_vp9 = sm8550_vdec_output_properties_vp9,
+	.dec_output_prop_size_vp9 = ARRAY_SIZE(sm8550_vdec_output_properties_vp9),
 };
