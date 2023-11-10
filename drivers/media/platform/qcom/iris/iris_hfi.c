@@ -293,7 +293,7 @@ int iris_hfi_session_set_default_header(struct iris_inst *inst)
 	ret = hfi_packet_session_property(inst,
 					  HFI_PROP_DEC_DEFAULT_HEADER,
 					  HFI_HOST_FLAGS_NONE,
-					  get_hfi_port(INPUT_MPLANE),
+					  get_hfi_port(inst, INPUT_MPLANE),
 					  HFI_PAYLOAD_U32,
 					  &default_header,
 					  sizeof(u32));
@@ -331,7 +331,7 @@ int iris_hfi_start(struct iris_inst *inst, u32 plane)
 					 HFI_CMD_START,
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 HFI_PAYLOAD_NONE,
 					 NULL,
@@ -371,7 +371,7 @@ int iris_hfi_stop(struct iris_inst *inst, u32 plane)
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED |
 					 HFI_HOST_FLAGS_NON_DISCARDABLE),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 HFI_PAYLOAD_NONE,
 					 NULL,
@@ -409,7 +409,7 @@ int iris_hfi_session_subscribe_mode(struct iris_inst *inst,
 					 cmd,
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 payload_type,
 					 payload,
@@ -448,7 +448,7 @@ int iris_hfi_pause(struct iris_inst *inst, u32 plane)
 					 HFI_CMD_PAUSE,
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 HFI_PAYLOAD_NONE,
 					 NULL,
@@ -487,7 +487,7 @@ int iris_hfi_resume(struct iris_inst *inst, u32 plane, u32 payload)
 					 HFI_CMD_RESUME,
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 HFI_PAYLOAD_U32,
 					 &payload,
@@ -527,7 +527,7 @@ int iris_hfi_drain(struct iris_inst *inst, u32 plane)
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED |
 					 HFI_HOST_FLAGS_NON_DISCARDABLE),
-					 get_hfi_port(plane),
+					 get_hfi_port(inst, plane),
 					 inst->session_id,
 					 HFI_PAYLOAD_NONE,
 					 NULL,
@@ -605,6 +605,59 @@ unlock:
 	return ret;
 }
 
+int iris_hfi_set_ir_period(struct iris_inst *inst,
+			   u32 packet_type, u32 flag, u32 plane, u32 payload_type,
+			   void *payload, u32 payload_size)
+{
+	u32 sync_frame_req = 0;
+	struct iris_core *core;
+	int ret;
+
+	core = inst->core;
+
+	mutex_lock(&core->lock);
+
+	ret = hfi_create_header(inst->packet, inst->packet_size,
+				inst->session_id, core->header_id++);
+	if (ret)
+		goto exit;
+
+	if (!inst->ir_enabled) {
+		inst->ir_enabled = ((*(u32 *)payload > 0) ? true : false);
+		if (inst->ir_enabled && inst->vb2q_dst->streaming) {
+			sync_frame_req = HFI_SYNC_FRAME_REQUEST_WITH_PREFIX_SEQ_HDR;
+			ret = hfi_create_packet(inst->packet, inst->packet_size,
+						HFI_PROP_REQUEST_SYNC_FRAME,
+						HFI_HOST_FLAGS_NONE,
+						HFI_PAYLOAD_U32_ENUM,
+						HFI_PORT_BITSTREAM,
+						core->packet_id++,
+						&sync_frame_req,
+						sizeof(u32));
+			if (ret)
+				goto exit;
+		}
+	}
+
+	ret = hfi_create_packet(inst->packet, inst->packet_size,
+				packet_type,
+				HFI_HOST_FLAGS_NONE,
+				HFI_PAYLOAD_U32,
+				plane,
+				core->packet_id++,
+				payload,
+				sizeof(u32));
+	if (ret)
+		goto exit;
+
+	ret = iris_hfi_queue_cmd_write(inst->core, inst->packet);
+
+exit:
+	mutex_unlock(&core->lock);
+
+	return ret;
+}
+
 int iris_hfi_queue_buffer(struct iris_inst *inst,
 			  struct iris_buffer *buffer)
 {
@@ -623,14 +676,14 @@ int iris_hfi_queue_buffer(struct iris_inst *inst,
 		goto unlock;
 	}
 
-	ret = get_hfi_buffer(buffer, &hfi_buffer);
+	ret = get_hfi_buffer(inst, buffer, &hfi_buffer);
 	if (ret)
 		goto unlock;
 
 	ret = hfi_packet_session_command(inst,
 					 HFI_CMD_BUFFER,
 					 HFI_HOST_FLAGS_INTR_REQUIRED,
-					 get_hfi_port_from_buffer_type(buffer->type),
+					 get_hfi_port_from_buffer_type(inst, buffer->type),
 					 inst->session_id,
 					 HFI_PAYLOAD_STRUCTURE,
 					 &hfi_buffer,
@@ -664,7 +717,7 @@ int iris_hfi_release_buffer(struct iris_inst *inst,
 		goto unlock;
 	}
 
-	ret = get_hfi_buffer(buffer, &hfi_buffer);
+	ret = get_hfi_buffer(inst, buffer, &hfi_buffer);
 	if (ret)
 		goto unlock;
 
@@ -674,7 +727,7 @@ int iris_hfi_release_buffer(struct iris_inst *inst,
 					 HFI_CMD_BUFFER,
 					 (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 					 HFI_HOST_FLAGS_INTR_REQUIRED),
-					 get_hfi_port_from_buffer_type(buffer->type),
+					 get_hfi_port_from_buffer_type(inst, buffer->type),
 					 inst->session_id,
 					 HFI_PAYLOAD_STRUCTURE,
 					 &hfi_buffer,

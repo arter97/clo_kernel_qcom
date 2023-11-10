@@ -8,6 +8,7 @@
 
 #include <media/v4l2-ctrls.h>
 
+#include "hfi_defines.h"
 #include "iris_buffer.h"
 #include "iris_common.h"
 #include "iris_core.h"
@@ -29,6 +30,7 @@
  * @fmt_dst: structure of v4l2_format for destination
  * @ctrl_handler: reference of v4l2 ctrl handler
  * @crop: structure of crop info
+ * @compose: structure of compose info
  * @packet: HFI packet
  * @packet_size: HFI packet size
  * @completions: structure of signal completions
@@ -36,6 +38,7 @@
  * @num_ctrls: supported number of controls
  * @caps_list: list head of capability
  * @codec: codec type
+ * @domain: domain type: encoder or decoder
  * @mem_pool: pointer to memory pool of buffers
  * @buffers: structure of buffer info
  * @fw_min_count: minimnum count of buffers needed by fw
@@ -53,6 +56,9 @@
  * @power: structure of power info
  * @bus_data: structure of bus data
  * @input_timer_list: list head of input timer
+ * @ir_enabled: boolean for intra refresh
+ * @hfi_rc_type: rate control type
+ * @hfi_layer_type: type of HFI layer encoding
  */
 
 struct iris_inst {
@@ -68,6 +74,7 @@ struct iris_inst {
 	struct v4l2_format		*fmt_dst;
 	struct v4l2_ctrl_handler	ctrl_handler;
 	struct rect_desc		crop;
+	struct rect_desc		compose;
 	void				*packet;
 	u32				packet_size;
 	struct completion		completions[MAX_SIGNAL];
@@ -75,6 +82,7 @@ struct iris_inst {
 	u32				num_ctrls;
 	struct list_head		caps_list;
 	enum codec_type			codec;
+	enum domain_type		domain;
 	struct iris_mem_pool		*mem_pool;
 	struct iris_buffers_info	buffers;
 	u32				fw_min_count;
@@ -92,6 +100,9 @@ struct iris_inst {
 	struct iris_inst_power		power;
 	struct bus_vote_data		bus_data;
 	struct list_head		input_timer_list;
+	bool				ir_enabled;
+	u32				hfi_rc_type;
+	u32				hfi_layer_type;
 };
 
 #endif
