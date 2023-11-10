@@ -171,10 +171,37 @@ static inline u16 gh_api_version(const struct gh_hypercall_hyp_identify_resp *gh
 
 void gh_hypercall_hyp_identify(struct gh_hypercall_hyp_identify_resp *hyp_identity);
 
+enum gh_error gh_hypercall_bell_send(u64 capid, u64 new_flags, u64 *old_flags);
+enum gh_error gh_hypercall_bell_set_mask(u64 capid, u64 enable_mask, u64 ack_mask);
+
 #define GH_HYPERCALL_MSGQ_TX_FLAGS_PUSH		BIT(0)
 
 enum gh_error gh_hypercall_msgq_send(u64 capid, size_t size, void *buff, u64 tx_flags, bool *ready);
 enum gh_error gh_hypercall_msgq_recv(u64 capid, void *buff, size_t size, size_t *recv_size,
 					bool *ready);
+
+struct gh_hypercall_vcpu_run_resp {
+	union {
+		enum {
+			/* VCPU is ready to run */
+			GH_VCPU_STATE_READY		= 0,
+			/* VCPU is sleeping until an interrupt arrives */
+			GH_VCPU_STATE_EXPECTS_WAKEUP	= 1,
+			/* VCPU is powered off */
+			GH_VCPU_STATE_POWERED_OFF	= 2,
+			/* VCPU is blocked in EL2 for unspecified reason */
+			GH_VCPU_STATE_BLOCKED		= 3,
+			/* VCPU has returned for MMIO READ */
+			GH_VCPU_ADDRSPACE_VMMIO_READ	= 4,
+			/* VCPU has returned for MMIO WRITE */
+			GH_VCPU_ADDRSPACE_VMMIO_WRITE	= 5,
+		} state;
+		u64 sized_state;
+	};
+	u64 state_data[3];
+};
+
+enum gh_error gh_hypercall_vcpu_run(u64 capid, u64 *resume_data,
+					struct gh_hypercall_vcpu_run_resp *resp);
 
 #endif
