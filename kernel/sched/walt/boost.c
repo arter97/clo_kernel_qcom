@@ -279,6 +279,9 @@ int sched_set_boost(int type)
 {
 	int ret = 0;
 
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
+
 	mutex_lock(&boost_mutex);
 	if (verify_boost_params(type))
 		_sched_set_boost(type);
@@ -287,7 +290,7 @@ int sched_set_boost(int type)
 	mutex_unlock(&boost_mutex);
 	return ret;
 }
-EXPORT_SYMBOL(sched_set_boost);
+EXPORT_SYMBOL_GPL(sched_set_boost);
 
 int sched_boost_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp,

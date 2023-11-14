@@ -54,6 +54,7 @@ static struct hab_device hab_devices[] = {
 	HAB_DEVICE_CNSTR(DEVICE_XVM3_NAME, MM_XVM_3, 26),
 	HAB_DEVICE_CNSTR(DEVICE_VNW1_NAME, MM_VNW_1, 27),
 	HAB_DEVICE_CNSTR(DEVICE_EXT1_NAME, MM_EXT_1, 28),
+	HAB_DEVICE_CNSTR(DEVICE_GPCE1_NAME, MM_GPCE_1, 29),
 };
 
 struct hab_driver hab_driver = {
@@ -120,6 +121,7 @@ void hab_ctx_free(struct kref *ref)
 	struct uhab_context *ctxdel, *ctxtmp;
 	struct hab_open_node *open_node;
 	struct export_desc *exp = NULL, *exp_tmp = NULL;
+	struct export_desc_super *exp_super = NULL;
 
 	/* garbage-collect exp/imp buffers */
 	write_lock_bh(&ctx->exp_lock);
@@ -142,7 +144,8 @@ void hab_ctx_free(struct kref *ref)
 			exp->export_id, exp->vcid_local,
 			ctx->import_total);
 		habmm_imp_hyp_unmap(ctx->import_ctx, exp, ctx->kernel);
-		kfree(exp);
+		exp_super = container_of(exp, struct export_desc_super, exp);
+		kfree(exp_super);
 	}
 	spin_unlock_bh(&ctx->imp_lock);
 
@@ -929,6 +932,9 @@ static int hab_generate_pchan(struct local_vmid *settings, int i, int j)
 		break;
 	case MM_EXT_START/100:
 		ret = hab_generate_pchan_group(settings, i, j, MM_EXT_START, MM_EXT_END);
+		break;
+	case MM_GPCE_START/100:
+		ret = hab_generate_pchan_group(settings, i, j, MM_GPCE_START, MM_GPCE_END);
 		break;
 	default:
 		pr_err("failed to find mmid %d, i %d, j %d\n",

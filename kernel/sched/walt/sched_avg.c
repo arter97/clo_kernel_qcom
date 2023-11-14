@@ -77,6 +77,9 @@ struct sched_avg_stats *sched_get_nr_running_avg(void)
 	bool any_hyst_time = false;
 	struct walt_sched_cluster *cluster;
 
+	if (unlikely(walt_disabled))
+		return NULL;
+
 	if (!period)
 		goto done;
 
@@ -157,7 +160,7 @@ struct sched_avg_stats *sched_get_nr_running_avg(void)
 done:
 	return &stats[0];
 }
-EXPORT_SYMBOL(sched_get_nr_running_avg);
+EXPORT_SYMBOL_GPL(sched_get_nr_running_avg);
 
 void sched_update_hyst_times(void)
 {
@@ -323,6 +326,9 @@ int sched_lpm_disallowed_time(int cpu, u64 *timeout)
 	u64 now = sched_clock();
 	u64 bias_end_time = atomic64_read(&per_cpu(busy_hyst_end_time, cpu));
 
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
+
 	if (unlikely(is_reserved(cpu))) {
 		*timeout = 10 * NSEC_PER_MSEC;
 		return 0; /* shallowest c-state */
@@ -335,4 +341,4 @@ int sched_lpm_disallowed_time(int cpu, u64 *timeout)
 
 	return INT_MAX; /* don't care */
 }
-EXPORT_SYMBOL(sched_lpm_disallowed_time);
+EXPORT_SYMBOL_GPL(sched_lpm_disallowed_time);

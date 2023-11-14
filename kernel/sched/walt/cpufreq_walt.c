@@ -309,6 +309,19 @@ static unsigned int get_next_freq(struct waltgov_policy *wg_policy,
 		}
 	}
 
+	if (freq > fmax_cap[SMART_FMAX_CAP][cluster->id]) {
+		freq = fmax_cap[SMART_FMAX_CAP][cluster->id];
+		wg_driv_cpu->reasons |= CPUFREQ_REASON_SMART_FMAX_CAP;
+	}
+	if (freq > fmax_cap[HIGH_PERF_CAP][cluster->id]) {
+		freq = fmax_cap[HIGH_PERF_CAP][cluster->id];
+		wg_driv_cpu->reasons |= CPUFREQ_REASON_HIGH_PERF_CAP;
+	}
+	if (freq > fmax_cap[PARTIAL_HALT_CAP][cluster->id]) {
+		freq = fmax_cap[PARTIAL_HALT_CAP][cluster->id];
+		wg_driv_cpu->reasons |= CPUFREQ_REASON_PARTIAL_HALT_CAP;
+	}
+
 	if (wg_policy->cached_raw_freq && freq == wg_policy->cached_raw_freq &&
 		!wg_policy->need_freq_update) {
 		final_freq = 0;
@@ -756,12 +769,17 @@ int cpufreq_walt_set_adaptive_freq(unsigned int cpu, unsigned int adaptive_low_f
 				   unsigned int adaptive_high_freq)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
-	struct cpufreq_policy *policy = wg_policy->policy;
+	struct waltgov_policy *wg_policy;
+	struct cpufreq_policy *policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
+	policy = wg_policy->policy;
 	if (policy->min <= adaptive_low_freq && policy->max >= adaptive_high_freq) {
 		wg_policy->tunables->adaptive_low_freq_kernel = adaptive_low_freq;
 		wg_policy->tunables->adaptive_high_freq_kernel = adaptive_high_freq;
@@ -770,7 +788,7 @@ int cpufreq_walt_set_adaptive_freq(unsigned int cpu, unsigned int adaptive_low_f
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(cpufreq_walt_set_adaptive_freq);
+EXPORT_SYMBOL_GPL(cpufreq_walt_set_adaptive_freq);
 
 /**
  * cpufreq_walt_get_adaptive_freq() - get the waltgov adaptive freq for cpu
@@ -786,11 +804,15 @@ int cpufreq_walt_get_adaptive_freq(unsigned int cpu, unsigned int *adaptive_low_
 				   unsigned int *adaptive_high_freq)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
+	struct waltgov_policy *wg_policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
 	if (adaptive_low_freq && adaptive_high_freq) {
 		*adaptive_low_freq = get_adaptive_low_freq(wg_policy);
 		*adaptive_high_freq = get_adaptive_high_freq(wg_policy);
@@ -799,7 +821,7 @@ int cpufreq_walt_get_adaptive_freq(unsigned int cpu, unsigned int *adaptive_low_
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(cpufreq_walt_get_adaptive_freq);
+EXPORT_SYMBOL_GPL(cpufreq_walt_get_adaptive_freq);
 
 /**
  * cpufreq_walt_reset_adaptive_freq() - reset the waltgov adaptive freq for cpu
@@ -812,17 +834,21 @@ EXPORT_SYMBOL(cpufreq_walt_get_adaptive_freq);
 int cpufreq_walt_reset_adaptive_freq(unsigned int cpu)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
+	struct waltgov_policy *wg_policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
 	wg_policy->tunables->adaptive_low_freq_kernel = 0;
 	wg_policy->tunables->adaptive_high_freq_kernel = 0;
 
 	return 0;
 }
-EXPORT_SYMBOL(cpufreq_walt_reset_adaptive_freq);
+EXPORT_SYMBOL_GPL(cpufreq_walt_reset_adaptive_freq);
 
 #define WALTGOV_ATTR_RW(_name)						\
 static struct governor_attr _name =					\
@@ -1033,6 +1059,7 @@ static void waltgov_tunables_restore(struct cpufreq_policy *policy)
 	tunables->target_load_shift = cached->target_load_shift;
 }
 
+bool waltgov_disabled = true;
 static int waltgov_init(struct cpufreq_policy *policy)
 {
 	struct waltgov_policy *wg_policy;
@@ -1151,6 +1178,7 @@ static int waltgov_start(struct cpufreq_policy *policy)
 		waltgov_add_callback(cpu, &wg_cpu->cb, waltgov_update_freq);
 	}
 
+	waltgov_disabled = false;
 	return 0;
 }
 
@@ -1168,6 +1196,8 @@ static void waltgov_stop(struct cpufreq_policy *policy)
 		irq_work_sync(&wg_policy->irq_work);
 		kthread_cancel_work_sync(&wg_policy->work);
 	}
+
+	waltgov_disabled = true;
 }
 
 static void waltgov_limits(struct cpufreq_policy *policy)

@@ -10,6 +10,8 @@
 #include <linux/dma-direction.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
+#include <linux/sched/clock.h>
+#include <linux/ipc_logging.h>
 
 #ifdef CONFIG_ARM64
 #define GENI_SE_DMA_PTR_L(ptr) ((u32)ptr)
@@ -18,6 +20,11 @@
 #define GENI_SE_DMA_PTR_L(ptr) ((u32)ptr)
 #define GENI_SE_DMA_PTR_H(ptr) 0
 #endif
+
+#define QUPV3_TEST_BUS_EN      0x204 //write 0x11
+#define QUPV3_TEST_BUS_SEL     0x200 //write 0x5  [for SE index 4)
+#define QUPV3_TEST_BUS_REG     0x208 //Read only reg, to be read as part of dump
+#define IPC_LOG_KPI_PAGES	(4)  // KPI IPC Log size
 
 #define GENI_SE_ERR(log_ctx, print, dev, x...) do { \
 ipc_log_string(log_ctx, x); \
@@ -44,17 +51,20 @@ if (print) { \
 /* In KHz */
 #define DEFAULT_SE_CLK	19200
 #define SPI_CORE2X_VOTE	51000
+#define Q2SPI_CORE2X_VOTE	100000
 #define I2C_CORE2X_VOTE	50000
-#define I3C_CORE2X_VOTE	19200
+#define I3C_CORE2X_VOTE	50000
 #define APPS_PROC_TO_QUP_VOTE	140000
 /* SE_DMA_GENERAL_CFG */
 #define SE_DMA_DEBUG_REG0		(0xE40)
 
 #define SE_DMA_TX_PTR_L			(0xC30)
 #define SE_DMA_TX_PTR_H			(0xC34)
+#define SE_DMA_TX_ATTR			(0xC38)
 #define SE_DMA_TX_LEN                   (0xC3C)
 #define SE_DMA_TX_IRQ_EN                (0xC48)
 #define SE_DMA_TX_LEN_IN                (0xC54)
+#define GENI_SE_DMA_EOT_BUF		(BIT(0))
 
 #define SE_DMA_RX_PTR_L			(0xD30)
 #define SE_DMA_RX_PTR_H			(0xD34)
@@ -115,6 +125,19 @@ if (print) { \
 #define IO_MACRO_IO3_SEL	(GENMASK(7, 6))
 #define IO_MACRO_IO2_SEL	BIT(5)
 #define IO_MACRO_IO0_SEL_BIT	BIT(0)
+
+/**
+ * struct kpi_time - Help to capture KPI information
+ * @len: length of the request
+ * @time_stamp: Time stamp of the request
+ *
+ * This struct used to hold length and time stamp of Tx/Rx request
+ *
+ */
+struct kpi_time {
+	unsigned int len;
+	unsigned long long time_stamp;
+};
 
 static inline int geni_se_common_resources_init(struct geni_se *se, u32 geni_to_core,
 			 u32 cpu_to_geni, u32 geni_to_ddr)
@@ -381,6 +404,131 @@ static inline void geni_se_common_get_major_minor_num(u32 hw_version,
 	*major = (hw_version & HW_VER_MAJOR_MASK) >> HW_VER_MAJOR_SHFT;
 	*minor = (hw_version & HW_VER_MINOR_MASK) >> HW_VER_MINOR_SHFT;
 	*step = hw_version & HW_VER_STEP_MASK;
+}
+
+/*
+ * test_bus_enable_per_qupv3: enables particular test bus number.
+ * @wrapper_dev: QUPV3 common driver handle from SE driver
+ *
+ * Note: Need to call only once.
+ *
+ * Return: none
+ */
+static inline void test_bus_enable_per_qupv3(struct device *wrapper_dev, void *ipc)
+{
+	struct geni_se *geni_se_dev;
+
+	geni_se_dev = dev_get_drvdata(wrapper_dev);
+	//Enablement of test bus is required only once.
+	//TEST_BUS_EN:4, TEST_BUS_REG_EN:0
+	geni_write_reg(0x11, geni_se_dev->base, QUPV3_TEST_BUS_EN);
+	GENI_SE_ERR(ipc, false, geni_se_dev->dev,
+		    "%s: TEST_BUS_EN: 0x%x @address:0x%x\n",
+		    __func__, geni_read_reg(geni_se_dev->base, QUPV3_TEST_BUS_EN),
+		    (geni_se_dev->base + QUPV3_TEST_BUS_EN));
+}
+
+/*
+ * test_bus_select_per_qupv3: Selects the test bus as required
+ * @wrapper_dev: QUPV3 common driver handle from SE driver
+ * @test_bus_num: GENI SE number from QUPV3 core. E.g. SE0 should pass value 1.
+ *
+ * @Return: None
+ */
+static inline void test_bus_select_per_qupv3(struct device *wrapper_dev, u8 test_bus_num, void *ipc)
+{
+	struct geni_se *geni_se_dev;
+
+	geni_se_dev = dev_get_drvdata(wrapper_dev);
+
+	geni_write_reg(test_bus_num, geni_se_dev->base, QUPV3_TEST_BUS_SEL);
+	GENI_SE_ERR(ipc, false, geni_se_dev->dev,
+		    "%s: readback TEST_BUS_SEL: 0x%x @address:0x%x\n",
+		    __func__, geni_read_reg(geni_se_dev->base, QUPV3_TEST_BUS_SEL),
+		    (geni_se_dev->base + QUPV3_TEST_BUS_SEL));
+}
+
+/*
+ * test_bus_read_per_qupv3: Selects the test bus as required
+ * @wrapper_dev: QUPV3 common driver handle from SE driver
+ *
+ * Return: None
+ */
+static inline void test_bus_read_per_qupv3(struct device *wrapper_dev, void *ipc)
+{
+	struct geni_se *geni_se_dev;
+
+	geni_se_dev = dev_get_drvdata(wrapper_dev);
+	GENI_SE_ERR(ipc, false, geni_se_dev->dev,
+		    "%s: dump QUPV3_TEST_BUS_REG:0x%x\n",
+		    __func__, geni_read_reg(geni_se_dev->base, QUPV3_TEST_BUS_REG));
+}
+
+/**
+ * geni_capture_start_time() - Used to capture start time of a function.
+ * @se: serial engine device
+ * @ipc: which IPC module to be used to log.
+ * @func: for which function start time is captured.
+ * @geni_kpi_capture_enabled: kpi capture enable flag to start capture the logs or not.
+ *
+ * Return:  start time if kpi geni_kpi_capture_enabled flag enabled or error value.
+ */
+static inline unsigned long long geni_capture_start_time(struct geni_se *se, void *ipc,
+							 const char *func,
+							 int geni_kpi_capture_enabled)
+{
+	struct device *dev = se->dev;
+	unsigned long long start_time = 0;
+
+	if (!ipc)
+		return -EINVAL;
+
+	if (geni_kpi_capture_enabled) {
+		start_time = sched_clock();
+		GENI_SE_ERR(ipc, false, dev,
+			    "%s:start at %llu nsec(%llu usec)\n", func,
+			    start_time, (start_time / 1000));
+	}
+	return start_time;
+}
+
+/**
+ * geni_capture_stop_time() - Logs the function execution time
+ * @se:	serial engine device
+ * @ipc: which IPC module to be used to log.
+ * @func: for which function kpi capture is used.
+ * @geni_kpi_capture_enabled: kpi capture enable flag to start capture the logs or not.
+ * @start_time: start time of the function
+ * @len: Number of bytes of transfer
+ * @freq: frequency of operation
+ * Return: None
+ */
+static inline void geni_capture_stop_time(struct geni_se *se, void *ipc,
+					  const char *func, int geni_kpi_capture_enabled,
+					  unsigned long long start_time, unsigned int len,
+					  unsigned int freq)
+{
+	struct device *dev = se->dev;
+	unsigned long long exec_time = 0;
+
+	if (!ipc)
+		return;
+
+	if (geni_kpi_capture_enabled && start_time) {
+		exec_time = sched_clock() - start_time;
+		if (!len)
+			GENI_SE_ERR(ipc, false, dev,
+				    "%s:took %llu nsec(%llu usec)\n",
+				    func, exec_time, (exec_time / 1000));
+		else if (len != 0 && freq != 0)
+			GENI_SE_ERR(ipc, false, dev,
+				    "%s:took %llu nsec(%llu usec) for %u bytes with freq %u\n",
+				    func, exec_time, (exec_time / 1000), len, freq);
+		else
+			GENI_SE_ERR(ipc, false, dev,
+				    "%s:took %llu nsec(%llu usec) for %u bytes\n", func,
+				    exec_time, (exec_time / 1000), len);
+	}
 }
 #endif
 

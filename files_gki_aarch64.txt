@@ -18,6 +18,10 @@ arch/arm64/crypto/sha256-glue.c
 arch/arm64/crypto/sha512-ce-core.S
 arch/arm64/crypto/sha512-ce-glue.c
 arch/arm64/crypto/sha512-glue.c
+arch/arm64/geniezone/gzvm_arch_common.h
+arch/arm64/geniezone/vcpu.c
+arch/arm64/geniezone/vgic.c
+arch/arm64/geniezone/vm.c
 arch/arm64/gunyah/gunyah_hypercall.c
 arch/arm64/include/asm/acpi.h
 arch/arm64/include/asm/alternative-macros.h
@@ -206,6 +210,7 @@ arch/arm64/include/uapi/asm/bitsperlong.h
 arch/arm64/include/uapi/asm/bpf_perf_event.h
 arch/arm64/include/uapi/asm/byteorder.h
 arch/arm64/include/uapi/asm/fcntl.h
+arch/arm64/include/uapi/asm/gzvm_arch.h
 arch/arm64/include/uapi/asm/hwcap.h
 arch/arm64/include/uapi/asm/kvm.h
 arch/arm64/include/uapi/asm/mman.h
@@ -481,6 +486,7 @@ block/blk-flush.c
 block/blk-ia-ranges.c
 block/blk-ioc.c
 block/blk-iocost.c
+block/blk-ioprio.c
 block/blk-ioprio.h
 block/blk-lib.c
 block/blk-map.c
@@ -619,6 +625,7 @@ crypto/xctr.c
 crypto/xts.c
 crypto/zstd.c
 drivers/amba/bus.c
+drivers/android/android_debug_symbols.c
 drivers/android/binder.c
 drivers/android/binder_alloc.c
 drivers/android/binder_alloc.h
@@ -1375,6 +1382,7 @@ drivers/net/wireguard/socket.h
 drivers/net/wireguard/timers.c
 drivers/net/wireguard/timers.h
 drivers/net/wireguard/version.h
+drivers/net/wwan/wwan_core.c
 drivers/nvdimm/badrange.c
 drivers/nvdimm/btt.c
 drivers/nvdimm/btt.h
@@ -1872,6 +1880,12 @@ drivers/video/hdmi.c
 drivers/video/of_display_timing.c
 drivers/video/of_videomode.c
 drivers/video/videomode.c
+drivers/virt/geniezone/gzvm_common.h
+drivers/virt/geniezone/gzvm_ioeventfd.c
+drivers/virt/geniezone/gzvm_irqfd.c
+drivers/virt/geniezone/gzvm_main.c
+drivers/virt/geniezone/gzvm_vcpu.c
+drivers/virt/geniezone/gzvm_vm.c
 drivers/virt/gunyah/gunyah_ioeventfd.c
 drivers/virt/gunyah/gunyah_irqfd.c
 drivers/virt/gunyah/gunyah_platform_hooks.c
@@ -2594,6 +2608,7 @@ include/linux/alarmtimer.h
 include/linux/align.h
 include/linux/amba/bus.h
 include/linux/amba/serial.h
+include/linux/android_debug_symbols.h
 include/linux/android_kabi.h
 include/linux/android_vendor.h
 include/linux/anon_inodes.h
@@ -2899,6 +2914,7 @@ include/linux/gpio_keys.h
 include/linux/gunyah.h
 include/linux/gunyah_rsc_mgr.h
 include/linux/gunyah_vm_mgr.h
+include/linux/gzvm_drv.h
 include/linux/hardirq.h
 include/linux/hash.h
 include/linux/hashtable.h
@@ -3777,6 +3793,7 @@ include/linux/workqueue.h
 include/linux/workqueue_api.h
 include/linux/writeback.h
 include/linux/ww_mutex.h
+include/linux/wwan.h
 include/linux/xarray.h
 include/linux/xattr.h
 include/linux/xxhash.h
@@ -4132,6 +4149,7 @@ include/trace/events/cma.h
 include/trace/events/compaction.h
 include/trace/events/cpuhp.h
 include/trace/events/devfreq.h
+include/trace/events/devlink.h
 include/trace/events/dma_fence.h
 include/trace/events/erofs.h
 include/trace/events/error_report.h
@@ -4218,6 +4236,7 @@ include/trace/hooks/binder.h
 include/trace/hooks/bl_hib.h
 include/trace/hooks/bug.h
 include/trace/hooks/cgroup.h
+include/trace/hooks/compaction.h
 include/trace/hooks/cpufreq.h
 include/trace/hooks/cpuidle.h
 include/trace/hooks/cpuidle_psci.h
@@ -4246,6 +4265,7 @@ include/trace/hooks/preemptirq.h
 include/trace/hooks/printk.h
 include/trace/hooks/psci.h
 include/trace/hooks/psi.h
+include/trace/hooks/regmap.h
 include/trace/hooks/remoteproc.h
 include/trace/hooks/rwsem.h
 include/trace/hooks/sched.h
@@ -4385,6 +4405,7 @@ include/uapi/linux/gen_stats.h
 include/uapi/linux/genetlink.h
 include/uapi/linux/gpio.h
 include/uapi/linux/gunyah.h
+include/uapi/linux/gzvm.h
 include/uapi/linux/hash_info.h
 include/uapi/linux/hdlc/ioctl.h
 include/uapi/linux/hdreg.h
@@ -4731,6 +4752,7 @@ include/uapi/linux/watch_queue.h
 include/uapi/linux/watchdog.h
 include/uapi/linux/wireguard.h
 include/uapi/linux/wireless.h
+include/uapi/linux/wwan.h
 include/uapi/linux/xattr.h
 include/uapi/linux/xfrm.h
 include/uapi/rdma/hfi/hfi1_ioctl.h
@@ -5659,6 +5681,7 @@ net/core/dev.c
 net/core/dev.h
 net/core/dev_addr_lists.c
 net/core/dev_ioctl.c
+net/core/devlink.c
 net/core/dst.c
 net/core/dst_cache.c
 net/core/fib_notifier.c
