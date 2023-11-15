@@ -43,6 +43,7 @@
 #define MAX_MARGIN_LEVELS (MAX_CLUSTERS - 1)
 
 extern bool walt_disabled;
+extern bool waltgov_disabled;
 
 enum task_event {
 	PUT_PREV_TASK	= 0,
@@ -176,6 +177,7 @@ struct walt_sched_cluster {
 
 extern struct walt_sched_cluster *sched_cluster[WALT_NR_CPUS];
 extern cpumask_t part_haltable_cpus;
+extern cpumask_t cpus_paused_by_us;
 /*END SCHED.H PORT*/
 
 extern int num_sched_clusters;
@@ -349,6 +351,7 @@ extern char sched_lib_name[LIB_PATH_LENGTH];
 extern unsigned int sched_lib_mask_force;
 
 extern cpumask_t cpus_for_sbt_pause;
+extern unsigned int sysctl_sched_sbt_enable;
 extern unsigned int sysctl_sched_sbt_delay_windows;
 
 extern cpumask_t cpus_for_pipeline;
@@ -799,7 +802,7 @@ extern struct cpumask __cpu_partial_halt_mask;
 static bool check_for_higher_capacity(int cpu1, int cpu2)
 {
 	if (cpu_partial_halted(cpu1) && is_min_possible_cluster_cpu(cpu2))
-		return true;
+		return false;
 
 	if (is_min_possible_cluster_cpu(cpu1) && cpu_partial_halted(cpu2))
 		return false;
@@ -1125,11 +1128,14 @@ static inline bool has_internal_freq_limit_changed(struct walt_sched_cluster *cl
 	int i;
 
 	internal_freq = cluster->walt_internal_freq_limit;
-
 	cluster->walt_internal_freq_limit = cluster->max_freq;
-	for (i = 0; i < MAX_FREQ_CAP; i++)
-		cluster->walt_internal_freq_limit = min(fmax_cap[i][cluster->id],
+
+	if (likely(!waltgov_disabled)) {
+		for (i = 0; i < MAX_FREQ_CAP; i++)
+			cluster->walt_internal_freq_limit = min(fmax_cap[i][cluster->id],
 					     cluster->walt_internal_freq_limit);
+	}
+
 	return cluster->walt_internal_freq_limit != internal_freq;
 }
 
