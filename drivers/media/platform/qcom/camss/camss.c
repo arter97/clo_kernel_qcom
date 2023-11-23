@@ -143,7 +143,9 @@ static const struct camss_subdev_resources vfe_res_8x16[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_4_1
+			.hw_ops = &vfe_ops_4_1,
+			.formats_rdi = &vfe_formats_rdi_8x16,
+			.formats_pix = &vfe_formats_pix_8x16
 		}
 	}
 };
@@ -317,7 +319,9 @@ static const struct camss_subdev_resources vfe_res_8x96[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_4_7
+			.hw_ops = &vfe_ops_4_7,
+			.formats_rdi = &vfe_formats_rdi_8x96,
+			.formats_pix = &vfe_formats_pix_8x96
 		}
 	},
 
@@ -340,7 +344,9 @@ static const struct camss_subdev_resources vfe_res_8x96[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_4_7
+			.hw_ops = &vfe_ops_4_7,
+			.formats_rdi = &vfe_formats_rdi_8x96,
+			.formats_pix = &vfe_formats_pix_8x96
 		}
 	}
 };
@@ -535,7 +541,9 @@ static const struct camss_subdev_resources vfe_res_660[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_4_8
+			.hw_ops = &vfe_ops_4_8,
+			.formats_rdi = &vfe_formats_rdi_8x96,
+			.formats_pix = &vfe_formats_pix_8x96
 		}
 	},
 
@@ -561,7 +569,9 @@ static const struct camss_subdev_resources vfe_res_660[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_4_8
+			.hw_ops = &vfe_ops_4_8,
+			.formats_rdi = &vfe_formats_rdi_8x96,
+			.formats_pix = &vfe_formats_pix_8x96
 		}
 	}
 };
@@ -752,7 +762,9 @@ static const struct camss_subdev_resources vfe_res_845[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 4,
-			.hw_ops = &vfe_ops_170
+			.hw_ops = &vfe_ops_170,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 
@@ -777,7 +789,9 @@ static const struct camss_subdev_resources vfe_res_845[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 4,
-			.hw_ops = &vfe_ops_170
+			.hw_ops = &vfe_ops_170,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 
@@ -801,7 +815,9 @@ static const struct camss_subdev_resources vfe_res_845[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 4,
-			.hw_ops = &vfe_ops_170
+			.hw_ops = &vfe_ops_170,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	}
 };
@@ -973,7 +989,9 @@ static const struct camss_subdev_resources vfe_res_8250[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_480
+			.hw_ops = &vfe_ops_480,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 	/* VFE1 */
@@ -996,7 +1014,9 @@ static const struct camss_subdev_resources vfe_res_8250[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 3,
-			.hw_ops = &vfe_ops_480
+			.hw_ops = &vfe_ops_480,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 	/* VFE2 (lite) */
@@ -1018,7 +1038,9 @@ static const struct camss_subdev_resources vfe_res_8250[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 4,
-			.hw_ops = &vfe_ops_480
+			.hw_ops = &vfe_ops_480,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 	/* VFE3 (lite) */
@@ -1040,7 +1062,9 @@ static const struct camss_subdev_resources vfe_res_8250[] = {
 		.type = CAMSS_SUBDEV_TYPE_VFE,
 		.vfe = {
 			.line_num = 4,
-			.hw_ops = &vfe_ops_480
+			.hw_ops = &vfe_ops_480,
+			.formats_rdi = &vfe_formats_rdi_845,
+			.formats_pix = &vfe_formats_pix_845
 		}
 	},
 };
