@@ -84,7 +84,8 @@ static const struct camss_subdev_resources csid_res_8x16[] = {
 		.interrupt = { "csid0" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_1
+			.hw_ops = &csid_ops_4_1,
+			.formats = &csid_formats_4_1
 		}
 	},
 
@@ -105,7 +106,8 @@ static const struct camss_subdev_resources csid_res_8x16[] = {
 		.interrupt = { "csid1" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_1
+			.hw_ops = &csid_ops_4_1,
+			.formats = &csid_formats_4_1
 		}
 	},
 };
@@ -218,7 +220,8 @@ static const struct camss_subdev_resources csid_res_8x96[] = {
 		.interrupt = { "csid0" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -239,7 +242,8 @@ static const struct camss_subdev_resources csid_res_8x96[] = {
 		.interrupt = { "csid1" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -260,7 +264,8 @@ static const struct camss_subdev_resources csid_res_8x96[] = {
 		.interrupt = { "csid2" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -281,7 +286,8 @@ static const struct camss_subdev_resources csid_res_8x96[] = {
 		.interrupt = { "csid3" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	}
 };
@@ -428,7 +434,8 @@ static const struct camss_subdev_resources csid_res_660[] = {
 		.interrupt = { "csid0" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -452,7 +459,8 @@ static const struct camss_subdev_resources csid_res_660[] = {
 		.interrupt = { "csid1" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -476,7 +484,8 @@ static const struct camss_subdev_resources csid_res_660[] = {
 		.interrupt = { "csid2" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	},
 
@@ -500,7 +509,8 @@ static const struct camss_subdev_resources csid_res_660[] = {
 		.interrupt = { "csid3" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_4_7
+			.hw_ops = &csid_ops_4_7,
+			.formats = &csid_formats_4_7
 		}
 	}
 };
@@ -687,7 +697,8 @@ static const struct camss_subdev_resources csid_res_845[] = {
 		.interrupt = { "csid0" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	},
 
@@ -711,7 +722,8 @@ static const struct camss_subdev_resources csid_res_845[] = {
 		.interrupt = { "csid1" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	},
 
@@ -735,7 +747,8 @@ static const struct camss_subdev_resources csid_res_845[] = {
 		.interrupt = { "csid2" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	}
 };
@@ -917,7 +930,8 @@ static const struct camss_subdev_resources csid_res_8250[] = {
 		.interrupt = { "csid0" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	},
 	/* CSID1 */
@@ -933,7 +947,8 @@ static const struct camss_subdev_resources csid_res_8250[] = {
 		.interrupt = { "csid1" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	},
 	/* CSID2 */
@@ -948,7 +963,8 @@ static const struct camss_subdev_resources csid_res_8250[] = {
 		.interrupt = { "csid2" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	},
 	/* CSID3 */
@@ -963,7 +979,8 @@ static const struct camss_subdev_resources csid_res_8250[] = {
 		.interrupt = { "csid3" },
 		.type = CAMSS_SUBDEV_TYPE_CSID,
 		.csid = {
-			.hw_ops = &csid_ops_gen2
+			.hw_ops = &csid_ops_gen2,
+			.formats = &csid_formats_gen2
 		}
 	}
 };
