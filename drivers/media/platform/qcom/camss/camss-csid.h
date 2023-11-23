@@ -149,6 +149,10 @@ struct csid_hw_ops {
 	void (*subdev_init)(struct csid_device *csid);
 };
 
+struct csid_subdev_resources {
+	const struct csid_hw_ops *hw_ops;
+};
+
 struct csid_device {
 	struct camss *camss;
 	u8 id;
@@ -169,7 +173,7 @@ struct csid_device {
 	struct v4l2_ctrl *testgen_mode;
 	const struct csid_format *formats;
 	unsigned int nformats;
-	const struct csid_hw_ops *ops;
+	const struct csid_subdev_resources *res;
 };
 
 struct camss_subdev_resources;

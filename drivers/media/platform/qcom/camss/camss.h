@@ -41,6 +41,13 @@
 
 #define CAMSS_RES_MAX 17
 
+enum camss_subdev_type {
+	CAMSS_SUBDEV_TYPE_CSIPHY,
+	CAMSS_SUBDEV_TYPE_CSID,
+	CAMSS_SUBDEV_TYPE_ISPIF,
+	CAMSS_SUBDEV_TYPE_VFE,
+};
+
 struct camss_subdev_resources {
 	char *regulators[CAMSS_RES_MAX];
 	char *clock[CAMSS_RES_MAX];
@@ -48,8 +55,12 @@ struct camss_subdev_resources {
 	u32 clock_rate[CAMSS_RES_MAX][CAMSS_RES_MAX];
 	char *reg[CAMSS_RES_MAX];
 	char *interrupt[CAMSS_RES_MAX];
-	u8 line_num;
-	const void *ops;
+	enum camss_subdev_type type;
+	union {
+		struct csiphy_subdev_resources csiphy;
+		struct csid_subdev_resources csid;
+		struct vfe_subdev_resources vfe;
+	};
 };
 
 struct icc_bw_tbl {
