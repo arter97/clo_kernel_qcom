@@ -105,6 +105,7 @@ struct camss_resources {
 	const unsigned int csid_num;
 	const unsigned int vfe_num;
 	const unsigned int vfe_lite_num;
+	int (*link_entities)(struct camss *camss);
 };
 
 struct camss {
