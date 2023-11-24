@@ -258,6 +258,10 @@
 	status = "okay";
 };
 
+&pmk8350_rtc {
+	status = "okay";
+};
+
 &qup_uart5_rx {
 	drive-strength = <2>;
 	bias-pull-up;
