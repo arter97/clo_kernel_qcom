@@ -21,6 +21,10 @@ properties:
     type: boolean
     description: Define property to use legacy based scm call.
 
+  memory-region:
+    maxItems: 1
+    description: Handle to reserve memory region.
+
 required:
   - compatible
 
@@ -28,8 +32,27 @@ additionalProperties: false
 
 examples:
   - |
+	reserved-memory {
+		qseecom_mem: qcom,qseecom {
+			compatible = "shared-dma-pool";
+			alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
+			reusable;
+			alignment = <0x0 0x400000>;
+			size = <0x0 0x1400000>; /* 20M */
+		};
+
+		qseecom_ta_mem: qcom,qseecom-ta {
+			compatible = "shared-dma-pool";
+			alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
+			reusable;
+			alignment = <0x0 0x400000>;
+			size = <0x0 0x1000000>; /* 16M */
+		};
+	};
+
     firmware {
         qcom_smcinvoke {
             compatible = "qcom,smcinvoke";
+            memory-region = <&qseecom_mem &qseecom_ta_mem>;
         };
     };
