@@ -6,6 +6,7 @@
 /dts-v1/;
 
 #include <dt-bindings/iio/qcom,spmi-adc7-pmk8350.h>
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include "qcm6490.dtsi"
 #include "pm7325.dtsi"
@@ -257,7 +258,27 @@
 };
 
 &pm8350c_pwm {
+	#address-cells = <1>;
+	#size-cells = <0>;
 	status = "okay";
+
+	led@1 {
+		reg = <1>;
+		color = <LED_COLOR_ID_RED>;
+		label = "red";
+	};
+
+	led@2 {
+		reg = <2>;
+		color = <LED_COLOR_ID_GREEN>;
+		label = "green";
+	};
+
+	led@3 {
+		reg = <3>;
+		color = <LED_COLOR_ID_BLUE>;
+		label = "blue";
+	};
 };
 
 &pmk8350_rtc {
