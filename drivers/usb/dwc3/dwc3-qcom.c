@@ -88,6 +88,10 @@ struct dwc3_qcom {
 	bool			pm_suspended;
 	struct icc_path		*icc_path_ddr;
 	struct icc_path		*icc_path_apps;
+
+	bool			enable_rt;
+	enum usb_role		current_role;
+	struct notifier_block	xhci_nb;
 };
 
 static inline void dwc3_qcom_setbits(void __iomem *base, u32 offset, u32 val)
@@ -673,17 +677,120 @@ static const struct software_node dwc3_qcom_swnode = {
 	.properties = dwc3_qcom_acpi_properties,
 };
 
+static int dwc3_xhci_event_notifier(struct notifier_block *nb,
+				    unsigned long event, void *ptr)
+{
+	struct usb_device *udev = ptr;
+
+	if (event != USB_DEVICE_ADD)
+		return NOTIFY_DONE;
+
+	/*
+	 * If this is a roothub corresponding to this controller, enable autosuspend
+	 */
+	if (!udev->parent) {
+		pm_runtime_use_autosuspend(&udev->dev);
+		pm_runtime_set_autosuspend_delay(&udev->dev, 1000);
+	}
+
+	usb_mark_last_busy(udev);
+
+	return NOTIFY_DONE;
+}
+
+static void dwc3_qcom_handle_cable_disconnect(void *data)
+{
+	struct dwc3_qcom *qcom = (struct dwc3_qcom *)data;
+	/*
+	 * If we are in device mode and get a cable disconnect,
+	 * handle it by clearing OTG_VBUS_VALID bit in wrapper.
+	 * The next set_mode to default role can be ignored.
+	 */
+	if (qcom->current_role == USB_ROLE_DEVICE) {
+		pm_runtime_get_sync(qcom->dev);
+		dwc3_qcom_vbus_override_enable(qcom, false);
+		pm_runtime_put_autosuspend(qcom->dev);
+	} else if (qcom->current_role == USB_ROLE_HOST) {
+		usb_unregister_notify(&qcom->xhci_nb);
+	}
+
+	pm_runtime_mark_last_busy(qcom->dev);
+	qcom->current_role = USB_ROLE_NONE;
+}
+
+static void dwc3_qcom_handle_set_mode(void *data, u32 desired_dr_role)
+{
+	struct dwc3_qcom *qcom = (struct dwc3_qcom *)data;
+
+	/*
+	 * If we are in device mode and get a cable disconnect,
+	 * handle it by clearing OTG_VBUS_VALID bit in wrapper.
+	 * The next set_mode to default role can be ignored and
+	 * so the OTG_VBUS_VALID should be set iff the current role
+	 * is NONE and we need to enter DEVICE mode.
+	 */
+	if ((qcom->current_role == USB_ROLE_NONE) &&
+	    (desired_dr_role == DWC3_GCTL_PRTCAP_DEVICE)) {
+		dwc3_qcom_vbus_override_enable(qcom, true);
+		qcom->current_role = USB_ROLE_DEVICE;
+	} else if ((desired_dr_role == DWC3_GCTL_PRTCAP_HOST) &&
+		   (qcom->current_role != USB_ROLE_HOST)) {
+		qcom->xhci_nb.notifier_call = dwc3_xhci_event_notifier;
+		usb_register_notify(&qcom->xhci_nb);
+		qcom->current_role = USB_ROLE_HOST;
+	}
+
+	pm_runtime_mark_last_busy(qcom->dev);
+}
+
+static void dwc3_qcom_handle_mode_changed(void *data, u32 current_dr_role)
+{
+	struct dwc3_qcom *qcom = (struct dwc3_qcom *)data;
+
+	/*
+	 * XHCI platform device is allocated upon host init.
+	 * So ensure we are in host mode before enabling autosuspend.
+	 */
+	if ((current_dr_role == DWC3_GCTL_PRTCAP_HOST) &&
+	    (qcom->current_role == USB_ROLE_HOST)) {
+		pm_runtime_use_autosuspend(&qcom->dwc->xhci->dev);
+		pm_runtime_set_autosuspend_delay(&qcom->dwc->xhci->dev, 0);
+	}
+}
+
+struct dwc3_glue_ops dwc3_qcom_glue_hooks = {
+	.notify_cable_disconnect = dwc3_qcom_handle_cable_disconnect,
+	.set_mode = dwc3_qcom_handle_set_mode,
+	.mode_changed = dwc3_qcom_handle_mode_changed,
+};
+
 static int dwc3_qcom_probe_core(struct platform_device *pdev, struct dwc3_qcom *qcom)
 {
 	struct dwc3 *dwc;
 
-	dwc = dwc3_probe(pdev);
+	struct dwc3_glue_data qcom_glue_data = {
+		.glue_data	= qcom,
+		.ops		= &dwc3_qcom_glue_hooks,
+	};
+
+	dwc = dwc3_probe(pdev,
+			 qcom->enable_rt ? &qcom_glue_data : NULL);
 	if (IS_ERR(dwc))
 		return PTR_ERR(dwc);
 
 	qcom->dwc = dwc;
 
 	return 0;
+}
+
+static bool dwc3_qcom_has_separate_dwc3_of_node(struct device *dev)
+{
+	struct device_node *np;
+
+	np = of_get_compatible_child(dev->of_node, "snps,dwc3");
+	of_node_put(np);
+
+	return !!np;
 }
 
 static int dwc3_qcom_of_register_core(struct platform_device *pdev)
@@ -795,10 +902,13 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	int			ret, i;
 	bool			ignore_pipe_clk;
 	bool			wakeup_source;
+	bool			legacy_binding;
 
 	qcom = devm_kzalloc(&pdev->dev, sizeof(*qcom), GFP_KERNEL);
 	if (!qcom)
 		return -ENOMEM;
+
+	legacy_binding = dwc3_qcom_has_separate_dwc3_of_node(dev);
 
 	platform_set_drvdata(pdev, qcom);
 	qcom->dev = &pdev->dev;
@@ -823,24 +933,26 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 		}
 	}
 
-	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
-	if (IS_ERR(qcom->resets)) {
-		return dev_err_probe(&pdev->dev, PTR_ERR(qcom->resets),
-				     "failed to get resets\n");
-	}
+	if (legacy_binding) {
+		qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
+		if (IS_ERR(qcom->resets)) {
+			return dev_err_probe(&pdev->dev, PTR_ERR(qcom->resets),
+					     "failed to get resets\n");
+		}
 
-	ret = reset_control_assert(qcom->resets);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to assert resets, err=%d\n", ret);
-		return ret;
-	}
+		ret = reset_control_assert(qcom->resets);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to assert resets, err=%d\n", ret);
+			return ret;
+		}
 
-	usleep_range(10, 1000);
+		usleep_range(10, 1000);
 
-	ret = reset_control_deassert(qcom->resets);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to deassert resets, err=%d\n", ret);
-		goto reset_assert;
+		ret = reset_control_deassert(qcom->resets);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to deassert resets, err=%d\n", ret);
+			goto reset_assert;
+		}
 	}
 
 	ret = dwc3_qcom_clk_init(qcom, of_clk_get_parent_count(np));
@@ -851,7 +963,7 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	if (np) {
+	if (legacy_binding) {
 		parent_res = res;
 	} else {
 		memcpy(&local_res, res, sizeof(struct resource));
@@ -882,7 +994,24 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	if (ignore_pipe_clk)
 		dwc3_qcom_select_utmi_clk(qcom);
 
-	if (np)
+	qcom->enable_rt = device_property_read_bool(dev,
+				"qcom,enable-rt");
+	if (!legacy_binding) {
+		/*
+		 * If we are enabling runtime, then we are using flattened
+		 * device implementation.
+		 */
+		qcom->mode = usb_get_dr_mode(dev);
+
+		if (qcom->mode == USB_DR_MODE_HOST)
+			qcom->current_role = USB_ROLE_HOST;
+		else if (qcom->mode == USB_DR_MODE_PERIPHERAL)
+			qcom->current_role = USB_ROLE_DEVICE;
+		else
+			qcom->current_role = USB_ROLE_NONE;
+	}
+
+	if (legacy_binding)
 		ret = dwc3_qcom_of_register_core(pdev);
 	else
 		ret = dwc3_qcom_probe_core(pdev, qcom);
@@ -898,8 +1027,6 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 
 	if (qcom->dwc_dev)
 		qcom->mode = usb_get_dr_mode(&qcom->dwc_dev->dev);
-	else
-		qcom->mode = usb_get_dr_mode(dev);
 
 	/* enable vbus override for device mode */
 	if (qcom->mode != USB_DR_MODE_HOST)

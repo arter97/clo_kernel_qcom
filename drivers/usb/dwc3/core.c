@@ -137,6 +137,9 @@ static void __dwc3_set_mode(struct work_struct *work)
 	if (!desired_dr_role)
 		goto out;
 
+	if (!dwc->cable_disconnected)
+		dwc3_notify_set_mode(dwc, desired_dr_role);
+
 	if (desired_dr_role == dwc->current_dr_role)
 		goto out;
 
@@ -230,6 +233,9 @@ static void __dwc3_set_mode(struct work_struct *work)
 	default:
 		break;
 	}
+
+	if (!ret)
+		dwc3_notify_mode_changed(dwc, dwc->current_dr_role);
 
 out:
 	pm_runtime_mark_last_busy(dwc->dev);
@@ -1788,7 +1794,8 @@ static int dwc3_get_clocks(struct dwc3 *dwc)
 	return 0;
 }
 
-struct dwc3 *dwc3_probe(struct platform_device *pdev)
+struct dwc3 *dwc3_probe(struct platform_device *pdev,
+			struct dwc3_glue_data *glue_data)
 {
 	struct device		*dev = &pdev->dev;
 	struct resource		*res, dwc_res;
@@ -1801,6 +1808,11 @@ struct dwc3 *dwc3_probe(struct platform_device *pdev)
 		return ERR_PTR(-ENOMEM);
 
 	dwc->dev = dev;
+
+	if (glue_data) {
+		dwc->glue_data = glue_data->glue_data;
+		dwc->glue_ops = glue_data->ops;
+	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -1951,7 +1963,7 @@ static int dwc3_plat_probe(struct platform_device *pdev)
 {
 	struct dwc3 *dwc;
 
-	dwc = dwc3_probe(pdev);
+	dwc = dwc3_probe(pdev, NULL);
 	if (IS_ERR(dwc))
 		return PTR_ERR(dwc);
 
@@ -1962,6 +1974,9 @@ static int dwc3_plat_probe(struct platform_device *pdev)
 
 void dwc3_remove(struct dwc3 *dwc)
 {
+	dwc->glue_data = NULL;
+	dwc->glue_ops = NULL;
+
 	pm_runtime_get_sync(dwc->dev);
 
 	dwc3_core_exit_mode(dwc);
