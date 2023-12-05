@@ -6,6 +6,7 @@
 /dts-v1/;
 
 #include <dt-bindings/iio/qcom,spmi-adc7-pmk8350.h>
+#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include "qcm6490.dtsi"
@@ -95,6 +96,24 @@
 		qcom,tx-device = <&wcd937x_tx>;
 
 		#sound-dai-cells = <1>;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		label = "gpio-keys";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&key_vol_up_default>;
+
+		key-volume-up {
+			label = "volume_up";
+			gpios = <&pm7325_gpios 6 GPIO_ACTIVE_LOW>;
+			linux,input-type = <1>;
+			linux,code = <KEY_VOLUMEUP>;
+			wakeup-source;
+			debounce-interval = <15>;
+			linux,can-disable;
+		};
 	};
 };
 
@@ -405,6 +424,17 @@
 	status = "disabled";
 };
 
+&pm7325_gpios {
+	key_vol_up_default: key-vol-up-state {
+		pins = "gpio6";
+		function = "normal";
+		input-enable;
+		bias-pull-up;
+		power-source = <0>;
+		qcom,drive-strength = <3>;
+	};
+};
+
 &pm8350c_pwm {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -429,6 +459,10 @@
 	};
 };
 
+&pmk8350_pon {
+	status = "okay";
+};
+
 &pmk8350_rtc {
 	status = "okay";
 };
@@ -439,6 +473,15 @@
 		label = "pmk8350_die_temp";
 		qcom,pre-scaling = <1 1>;
 	};
+};
+
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
+	status = "okay";
 };
 
 &qup_uart5_rx {
