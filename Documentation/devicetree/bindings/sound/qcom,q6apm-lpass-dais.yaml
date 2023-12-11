@@ -21,6 +21,9 @@ properties:
   q6apm-dai-uses-dummy-ops:
     description: Support for cpu dai with dummy ops
 
+  qcom,prmcc_clk:
+     description: A reference to prmcc clock phandle
+
   '#sound-dai-cells':
     const: 1
 
