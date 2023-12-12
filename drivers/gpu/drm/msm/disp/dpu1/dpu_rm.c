@@ -8,6 +8,7 @@
 #include "dpu_kms.h"
 #include "dpu_hw_lm.h"
 #include "dpu_hw_ctl.h"
+#include "dpu_hw_cdm.h"
 #include "dpu_hw_pingpong.h"
 #include "dpu_hw_sspp.h"
 #include "dpu_hw_intf.h"
@@ -96,6 +97,8 @@ int dpu_rm_destroy(struct dpu_rm *rm)
 	for (i = 0; i < ARRAY_SIZE(rm->hw_sspp); i++)
 		dpu_hw_sspp_destroy(rm->hw_sspp[i]);
 
+	if (rm->cdm_blk)
+		dpu_hw_cdm_destroy(rm->cdm_blk);
 	return 0;
 }
 
@@ -238,6 +241,18 @@ int dpu_rm_init(struct dpu_rm *rm,
 			goto fail;
 		}
 		rm->hw_sspp[sspp->id - SSPP_NONE] = hw;
+	}
+
+	if (cat->cdm) {
+		struct dpu_hw_cdm *hw;
+
+		hw = dpu_hw_cdm_init(cat->cdm, mmio, cat->mdss_ver);
+		if (IS_ERR(hw)) {
+			rc = PTR_ERR(hw);
+			DPU_ERROR("failed cdm object creation: err %d\n", rc);
+			goto fail;
+		}
+		rm->cdm_blk = &hw->base;
 	}
 
 	return 0;
