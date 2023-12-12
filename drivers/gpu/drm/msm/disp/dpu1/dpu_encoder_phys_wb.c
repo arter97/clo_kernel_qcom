@@ -238,6 +238,7 @@ static int dpu_encoder_phys_wb_atomic_check(
 {
 	struct drm_framebuffer *fb;
 	const struct drm_display_mode *mode = &crtc_state->mode;
+	int ret;
 
 	DPU_DEBUG("[atomic_check:%d, \"%s\",%d,%d]\n",
 			phys_enc->hw_wb->idx, mode->name, mode->hdisplay, mode->vdisplay);
@@ -273,6 +274,10 @@ static int dpu_encoder_phys_wb_atomic_check(
 				  fb->width, phys_enc->hw_wb->caps->maxlinewidth);
 		return -EINVAL;
 	}
+
+	ret = drm_atomic_helper_check_wb_connector_state(conn_state->connector, conn_state->state);
+	if (ret < 0)
+		DPU_DEBUG("wb check connector state failed ret = %d\n", ret);
 
 	return 0;
 }
