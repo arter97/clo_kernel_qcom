@@ -17,6 +17,7 @@ description: |
 properties:
   compatible:
     const: sdw20217010d00
+    const: sdw20217010a00
 
   reg:
     maxItems: 1

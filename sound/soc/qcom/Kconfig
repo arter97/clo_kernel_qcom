@@ -118,6 +118,15 @@ config SND_SOC_QDSP6_PRM
 	tristate
 	select SND_SOC_QDSP6_PRM_LPASS_CLOCKS
 
+config SND_SOC_SPF_CORE
+	tristate
+
+config SND_SOC_AUDIO_PKT
+	tristate
+
+config SND_SOC_MSM_AUDIO_MEM
+	tristate
+
 config SND_SOC_QDSP6
 	tristate "SoC ALSA audio driver for QDSP6"
 	depends on QCOM_APR
@@ -134,6 +143,9 @@ config SND_SOC_QDSP6
 	select SND_SOC_TOPOLOGY
 	select SND_SOC_QDSP6_APM
 	select SND_SOC_QDSP6_PRM
+	select SND_SOC_SPF_CORE
+	select SND_SOC_AUDIO_PKT
+	select SND_SOC_MSM_AUDIO_MEM
 	help
 	 To add support for MSM QDSP6 Soc Audio.
 	 This will enable sound soc platform specific
@@ -220,5 +232,19 @@ config SND_SOC_SC7280
 	  Add support for audio on Qualcomm Technologies Inc.
 	  SC7280 SoC-based systems.
 	  Say Y or M if you want to use audio device on this SoCs.
+
+config SND_SOC_QCM6490
+	tristate "SoC Machine driver for QCM6490 boards"
+	depends on I2C && SOUNDWIRE
+	select SND_SOC_QCOM_COMMON
+	select SND_SOC_LPASS_MACRO_COMMON
+	imply SND_SOC_LPASS_RX_MACRO
+	imply SND_SOC_LPASS_TX_MACRO
+	imply SND_SOC_LPASS_WSA_MACRO
+	help
+	  Add support for audio on Qualcomm Technologies Inc.
+	  QCM6490 SoC-based systems.
+	  To compile this driver say Y or M if you want to
+	  use audio device on this SoCs.
 
 endif #SND_SOC_QCOM

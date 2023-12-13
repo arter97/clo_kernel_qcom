@@ -4,15 +4,92 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/dev_printk.h>
 #include <linux/adreno-smmu-priv.h>
 #include <linux/delay.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 
 #include "arm-smmu.h"
 #include "arm-smmu-qcom.h"
 
 #define QCOM_DUMMY_VAL	-1
+
+struct actlr_config {
+	u16 sid;
+	u16 mask;
+	u32 actlr;
+};
+
+#define PREFETCH_DISABLE	0
+#define PREFETCH_SHALLOW	BIT(8)
+#define PREFETCH_DEEP		(BIT(9) | BIT(8))
+#define PREFETCH_DEEP_GFX	(BIT(9) | BIT(8) | BIT(5) | BIT(3))
+#define CPRE			BIT(1)		/* Enable context caching in the prefetch buffer */
+#define CMTLB			BIT(0)		/* Enable context caching in the macro TLB */
+
+static const struct actlr_config sm8550_apps_actlr_cfg[] = {
+	{ 0x18a0, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x18e0, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0800, 0x0020, PREFETCH_DISABLE | CMTLB },
+	{ 0x1800, 0x00c0, PREFETCH_DISABLE | CMTLB },
+	{ 0x1820, 0x0000, PREFETCH_DISABLE | CMTLB },
+	{ 0x1860, 0x0000, PREFETCH_DISABLE | CMTLB },
+	{ 0x0c01, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c02, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c03, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c04, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c05, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c06, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c07, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c08, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c09, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c0c, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c0d, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c0e, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x0c0f, 0x0020, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1961, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1962, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1963, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1964, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1965, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1966, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1967, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1968, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1969, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x196c, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x196d, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x196e, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x196f, 0x0000, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c1, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c2, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c3, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c4, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c5, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c6, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c7, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c8, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19c9, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19cc, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19cd, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19ce, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x19cf, 0x0010, PREFETCH_DEEP | CPRE | CMTLB },
+	{ 0x1c00, 0x0002, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1c01, 0x0000, PREFETCH_DISABLE | CMTLB },
+	{ 0x1920, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1923, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1924, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1940, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1941, 0x0004, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1943, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1944, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x1947, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+};
+
+static const struct actlr_config sm8550_gfx_actlr_cfg[] = {
+	{ 0x0000, 0x03ff, PREFETCH_DEEP_GFX | CPRE | CMTLB },
+};
 
 static struct qcom_smmu *to_qcom_smmu(struct arm_smmu_device *smmu)
 {
@@ -205,10 +282,40 @@ static bool qcom_adreno_can_do_ttbr1(struct arm_smmu_device *smmu)
 	return true;
 }
 
+static void arm_smmu_set_actlr(struct device *dev, struct arm_smmu_device *smmu, int cbndx,
+		const struct actlr_config *actlrcfg, size_t actlrcfg_size)
+{
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
+	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
+	struct arm_smmu_smr *smr;
+	int i;
+	int j;
+	u16 id;
+	u16 mask;
+	int idx;
+
+	for (i = 0; i < actlrcfg_size; ++i) {
+		id = (actlrcfg + i)->sid;
+		mask = (actlrcfg + i)->mask;
+
+		for_each_cfg_sme(cfg, fwspec, j, idx) {
+			smr = &smmu->smrs[idx];
+			if (smr_is_subset(*smr, id, mask))
+				arm_smmu_cb_write(smmu, cbndx, ARM_SMMU_CB_ACTLR,
+						(actlrcfg + i)->actlr);
+		}
+	}
+}
+
 static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
 		struct io_pgtable_cfg *pgtbl_cfg, struct device *dev)
 {
 	struct adreno_smmu_priv *priv;
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
+	struct qcom_smmu *qsmmu = to_qcom_smmu(smmu);
+	const struct actlr_config *actlrcfg;
+	size_t actlrcfg_size;
+	int cbndx = smmu_domain->cfg.cbndx;
 
 	smmu_domain->cfg.flush_walk_prefer_tlbiasid = true;
 
@@ -238,6 +345,12 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
 	priv->set_stall = qcom_adreno_smmu_set_stall;
 	priv->resume_translation = qcom_adreno_smmu_resume_translation;
 
+	if (qsmmu->data->actlrcfg_gfx) {
+		actlrcfg = qsmmu->data->actlrcfg_gfx;
+		actlrcfg_size = qsmmu->data->actlrcfg_gfx_size;
+		arm_smmu_set_actlr(dev, smmu, cbndx, actlrcfg, actlrcfg_size);
+	}
+
 	return 0;
 }
 
@@ -260,10 +373,101 @@ static const struct of_device_id qcom_smmu_client_of_match[] __maybe_unused = {
 	{ }
 };
 
+static void *qcom_alloc_pages(void *cookie, size_t size, gfp_t gfp)
+{
+	struct page *p;
+	struct qcom_scm_vmperm perms[2];
+	u64 src  = BIT(QCOM_SCM_VMID_HLOS);
+	int ret;
+
+	struct arm_smmu_domain *domain = (void *)cookie;
+	/*
+	 * qcom_scm_assign_mem call during atomic allocation can sleep, Using GFP flags
+	 * to detect allocation path and return failure for atomic allocations.
+	 */
+	if (!gfpflags_allow_blocking(gfp)) {
+		dev_err(domain->smmu->dev,
+			"qcom_scm_assign_mem call are not allowed during atomic allocations\n");
+		return NULL;
+	}
+	p = alloc_page(gfp);
+	if (!p)
+		return NULL;
+
+	perms[0].vmid = QCOM_SCM_VMID_HLOS;
+	perms[0].perm = QCOM_SCM_PERM_RW;
+	perms[1].vmid = domain->secure_vmid;
+	perms[1].perm = QCOM_SCM_PERM_READ;
+	ret = qcom_scm_assign_mem(page_to_phys(p), PAGE_SIZE,
+				  &src, perms, 2);
+	if (ret < 0) {
+		dev_err(domain->smmu->dev,
+			"assign memory failed for vmid=%x ret=%d\n",
+			domain->secure_vmid, ret);
+		__free_page(p);
+		return NULL;
+	}
+
+	return page_address(p);
+}
+
+static void qcom_free_pages(void *cookie, void *pages, size_t size)
+{
+	struct qcom_scm_vmperm perms;
+	struct page *p;
+	u64 src;
+	int ret;
+
+	struct arm_smmu_domain *domain = (void *)cookie;
+
+	p = virt_to_page(pages);
+
+	perms.vmid = QCOM_SCM_VMID_HLOS;
+	perms.perm = QCOM_SCM_PERM_RWX;
+	src = BIT(domain->secure_vmid) | BIT(QCOM_SCM_VMID_HLOS);
+	ret = qcom_scm_assign_mem(page_to_phys(p), PAGE_SIZE,
+				  &src, &perms, 1);
+	/*
+	 * For assign failure scenario, it is not safe to use these pages by HLOS.
+	 * So returning from here instead of freeing the page.
+	 */
+	if (ret < 0) {
+		dev_err(domain->smmu->dev,
+			"assign memory failed to HLOS for vmid=%x ret=%d\n",
+			domain->secure_vmid, ret);
+		return;
+	}
+
+	__free_page(p);
+}
+
 static int qcom_smmu_init_context(struct arm_smmu_domain *smmu_domain,
 		struct io_pgtable_cfg *pgtbl_cfg, struct device *dev)
 {
+	u32 val;
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
+	struct qcom_smmu *qsmmu = to_qcom_smmu(smmu);
+	const struct actlr_config *actlrcfg;
+	size_t actlrcfg_size;
+	int cbndx = smmu_domain->cfg.cbndx;
+
+	if (qsmmu->data->actlrcfg) {
+		actlrcfg = qsmmu->data->actlrcfg;
+		actlrcfg_size = qsmmu->data->actlrcfg_size;
+		arm_smmu_set_actlr(dev, smmu, cbndx, actlrcfg, actlrcfg_size);
+	}
+
 	smmu_domain->cfg.flush_walk_prefer_tlbiasid = true;
+
+	/*
+	 * For those client where qcom,iommu-vmid is not defined, default arm-smmu pgtable
+	 * alloc/free handler will be used.
+	 */
+	if (of_property_read_u32(dev->of_node, "qcom,iommu-vmid", &val) == 0) {
+		smmu_domain->secure_vmid = val;
+		pgtbl_cfg->alloc = qcom_alloc_pages;
+		pgtbl_cfg->free = qcom_free_pages;
+	}
 
 	return 0;
 }
@@ -409,6 +613,10 @@ static const struct arm_smmu_impl qcom_smmu_500_impl = {
 	.reset = arm_mmu500_reset,
 	.write_s2cr = qcom_smmu_write_s2cr,
 	.tlb_sync = qcom_smmu_tlb_sync,
+#ifdef CONFIG_ARM_SMMU_QCOM_TBU
+	.context_fault = qcom_smmu_context_fault,
+	.context_fault_needs_threaded_irq = true,
+#endif
 };
 
 static const struct arm_smmu_impl sdm845_smmu_500_impl = {
@@ -418,6 +626,10 @@ static const struct arm_smmu_impl sdm845_smmu_500_impl = {
 	.reset = qcom_sdm845_smmu500_reset,
 	.write_s2cr = qcom_smmu_write_s2cr,
 	.tlb_sync = qcom_smmu_tlb_sync,
+#ifdef CONFIG_ARM_SMMU_QCOM_TBU
+	.context_fault = qcom_smmu_context_fault,
+	.context_fault_needs_threaded_irq = true,
+#endif
 };
 
 static const struct arm_smmu_impl qcom_adreno_smmu_v2_impl = {
@@ -435,6 +647,10 @@ static const struct arm_smmu_impl qcom_adreno_smmu_500_impl = {
 	.alloc_context_bank = qcom_adreno_smmu_alloc_context_bank,
 	.write_sctlr = qcom_adreno_smmu_write_sctlr,
 	.tlb_sync = qcom_smmu_tlb_sync,
+#ifdef CONFIG_ARM_SMMU_QCOM_TBU
+	.context_fault = qcom_smmu_context_fault,
+	.context_fault_needs_threaded_irq = true,
+#endif
 };
 
 static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
@@ -443,6 +659,7 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
 	const struct device_node *np = smmu->dev->of_node;
 	const struct arm_smmu_impl *impl;
 	struct qcom_smmu *qsmmu;
+	int ret;
 
 	if (!data)
 		return ERR_PTR(-EINVAL);
@@ -464,7 +681,12 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
 		return ERR_PTR(-ENOMEM);
 
 	qsmmu->smmu.impl = impl;
-	qsmmu->cfg = data->cfg;
+	qsmmu->data = data;
+
+	INIT_LIST_HEAD(&qsmmu->tbu_list);
+	ret = devm_of_platform_populate(smmu->dev);
+	if (ret)
+		return ERR_PTR(ret);
 
 	return &qsmmu->smmu;
 }
@@ -503,6 +725,17 @@ static const struct qcom_smmu_match_data sdm845_smmu_500_data = {
 	/* Also no debug configuration. */
 };
 
+
+static const struct qcom_smmu_match_data sm8550_smmu_500_impl0_data = {
+	.impl = &qcom_smmu_500_impl,
+	.adreno_impl = &qcom_adreno_smmu_500_impl,
+	.cfg = &qcom_smmu_impl0_cfg,
+	.actlrcfg = sm8550_apps_actlr_cfg,
+	.actlrcfg_size = ARRAY_SIZE(sm8550_apps_actlr_cfg),
+	.actlrcfg_gfx = sm8550_gfx_actlr_cfg,
+	.actlrcfg_gfx_size = ARRAY_SIZE(sm8550_gfx_actlr_cfg),
+};
+
 static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
 	.impl = &qcom_smmu_500_impl,
 	.adreno_impl = &qcom_adreno_smmu_500_impl,
@@ -536,6 +769,7 @@ static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
 	{ .compatible = "qcom,sm8250-smmu-500", .data = &qcom_smmu_500_impl0_data },
 	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
 	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
+	{ .compatible = "qcom,sm8550-smmu-500", .data = &sm8550_smmu_500_impl0_data },
 	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
 	{ }
 };

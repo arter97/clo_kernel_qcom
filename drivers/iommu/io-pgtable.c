@@ -34,6 +34,34 @@ io_pgtable_init_table[IO_PGTABLE_NUM_FMTS] = {
 #endif
 };
 
+static int check_custom_allocator(enum io_pgtable_fmt fmt,
+				  struct io_pgtable_cfg *cfg)
+{
+	/* When passing a custom allocator, both the alloc and free
+	 * functions should be provided.
+	 */
+	if ((cfg->alloc != NULL) != (cfg->free != NULL))
+		return -EINVAL;
+
+	/* No custom allocator, no need to check the format. */
+	if (!cfg->alloc)
+		return 0;
+
+	switch (fmt) {
+	case ARM_32_LPAE_S1:
+	case ARM_32_LPAE_S2:
+	case ARM_64_LPAE_S1:
+	case ARM_64_LPAE_S2:
+	case ARM_MALI_LPAE:
+		return 0;
+
+	default:
+		break;
+	}
+
+	return -EINVAL;
+}
+
 struct io_pgtable_ops *alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 					    struct io_pgtable_cfg *cfg,
 					    void *cookie)
@@ -42,6 +70,9 @@ struct io_pgtable_ops *alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 	const struct io_pgtable_init_fns *fns;
 
 	if (fmt >= IO_PGTABLE_NUM_FMTS)
+		return NULL;
+
+	if (check_custom_allocator(fmt, cfg))
 		return NULL;
 
 	fns = io_pgtable_init_table[fmt];

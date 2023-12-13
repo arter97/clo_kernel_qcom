@@ -24,6 +24,7 @@ properties:
       - qcom,pmi8998-wled
       - qcom,pm660l-wled
       - qcom,pm6150l-wled
+      - qcom,pm7325b-wled
       - qcom,pm8150l-wled
 
   reg:

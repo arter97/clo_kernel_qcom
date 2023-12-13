@@ -18,6 +18,12 @@ properties:
     enum:
       - qcom,q6apm-lpass-dais
 
+  q6apm-dai-uses-dummy-ops:
+    description: Support for cpu dai with dummy ops
+
+  qcom,prmcc_clk:
+     description: A reference to prmcc clock phandle
+
   '#sound-dai-cells':
     const: 1
 
@@ -31,5 +37,6 @@ examples:
   - |
     dais {
         compatible = "qcom,q6apm-lpass-dais";
+        q6apm-dai-uses-dummy-ops;
         #sound-dai-cells = <1>;
     };

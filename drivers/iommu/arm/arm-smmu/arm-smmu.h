@@ -136,6 +136,7 @@ enum arm_smmu_cbar_type {
 #define ARM_SMMU_CBAR_VMID		GENMASK(7, 0)
 
 #define ARM_SMMU_GR1_CBFRSYNRA(n)	(0x400 + ((n) << 2))
+#define ARM_SMMU_CBFRSYNRA_SID		GENMASK(15, 0)
 
 #define ARM_SMMU_GR1_CBA2R(n)		(0x800 + ((n) << 2))
 #define ARM_SMMU_CBA2R_VMID16		GENMASK(31, 16)
@@ -238,6 +239,7 @@ enum arm_smmu_cbar_type {
 #define ARM_SMMU_CB_ATSR		0x8f0
 #define ARM_SMMU_ATSR_ACTIVE		BIT(0)
 
+#define ARM_SMMU_RESUME_TERMINATE	BIT(0)
 
 /* Maximum number of context banks per SMMU */
 #define ARM_SMMU_MAX_CBS		128
@@ -374,6 +376,14 @@ struct arm_smmu_domain {
 	struct mutex			init_mutex; /* Protects smmu pointer */
 	spinlock_t			cb_lock; /* Serialises ATS1* ops and TLB syncs */
 	struct iommu_domain		domain;
+	/*
+	 * Use to store parse vmid value for those clients which want HLOS
+	 * to share pgtable to different entity(VMID).
+	 * Fix Me: Ideally this should be implemented on arm-smmu vendor implementation
+	 * driver, but as per current design of arm_smmu_domain_alloc there is no way
+	 * to call implementation callbacks.
+	 */
+	u32				secure_vmid;
 };
 
 struct arm_smmu_master_cfg {
@@ -437,6 +447,7 @@ struct arm_smmu_impl {
 	int (*def_domain_type)(struct device *dev);
 	irqreturn_t (*global_fault)(int irq, void *dev);
 	irqreturn_t (*context_fault)(int irq, void *dev);
+	bool context_fault_needs_threaded_irq;
 	int (*alloc_context_bank)(struct arm_smmu_domain *smmu_domain,
 				  struct arm_smmu_device *smmu,
 				  struct device *dev, int start);
@@ -499,6 +510,11 @@ static inline void arm_smmu_writeq(struct arm_smmu_device *smmu, int page,
 		smmu->impl->write_reg64(smmu, page, offset, val);
 	else
 		writeq_relaxed(val, arm_smmu_page(smmu, page) + offset);
+}
+
+static inline bool smr_is_subset(struct arm_smmu_smr smrs, u16 id, u16 mask)
+{
+	return (mask & smrs.mask) == mask && !((id ^ smrs.id) & ~smrs.mask);
 }
 
 #define ARM_SMMU_GR0		0
