@@ -120,6 +120,7 @@ struct usb_request {
 
 	int			status;
 	unsigned		actual;
+	unsigned int            udc_priv;
 
 	ANDROID_KABI_RESERVE(1);
 };
@@ -242,6 +243,7 @@ struct usb_ep {
 	u8			address;
 	const struct usb_endpoint_descriptor	*desc;
 	const struct usb_ss_ep_comp_descriptor	*comp_desc;
+	bool			endless;
 
 	ANDROID_KABI_RESERVE(1);
 };
@@ -457,6 +459,12 @@ struct usb_gadget {
 	unsigned			lpm_capable:1;
 	int				irq;
 	int				id_number;
+	unsigned			remote_wakeup:1;
+	bool				bam2bam_func_enabled;
+	u32				extra_buf_alloc;
+	bool				l1_supported;
+	bool				is_chipidea;
+	bool				self_powered;
 };
 #define work_to_gadget(w)	(container_of((w), struct usb_gadget, work))
 
