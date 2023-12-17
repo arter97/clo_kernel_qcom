@@ -421,7 +421,7 @@ int venc_s_param(struct iris_inst *inst, struct v4l2_streamparm *s_parm)
 	}
 
 	us_per_frame = timeperframe->numerator * (u64)USEC_PER_SEC;
-	do_div(us_per_frame, timeperframe->denominator);
+	us_per_frame = div64_u64(us_per_frame, timeperframe->denominator);
 
 	if (!us_per_frame) {
 		ret = -EINVAL;
@@ -429,7 +429,7 @@ int venc_s_param(struct iris_inst *inst, struct v4l2_streamparm *s_parm)
 	}
 
 	input_rate = (u64)USEC_PER_SEC;
-	do_div(input_rate, us_per_frame);
+	input_rate = div64_u64(input_rate, us_per_frame);
 
 	q16_rate = (u32)input_rate << 16;
 	if (is_frame_rate)
@@ -556,7 +556,7 @@ int venc_qbuf(struct iris_inst *inst, struct vb2_buffer *vb2)
 
 	if (!allow_qbuf(inst, vb2->type)) {
 		buf->attr |= BUF_ATTR_DEFERRED;
-		return ret;
+		return 0;
 	}
 
 	iris_scale_power(inst);

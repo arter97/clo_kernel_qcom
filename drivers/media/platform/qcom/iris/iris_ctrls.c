@@ -856,12 +856,10 @@ int set_flip(struct iris_inst *inst,
 
 int set_rotation(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 {
-	u32 rot, hfi_id, hfi_val;
+	u32 hfi_id, hfi_val;
 
-	rot = inst->cap[cap_id].value;
 	hfi_id = inst->cap[cap_id].hfi_id;
-
-	hfi_val = v4l2_to_hfi_enum(inst, cap_id, &rot);
+	v4l2_to_hfi_enum(inst, cap_id, &hfi_val);
 
 	return iris_hfi_set_property(inst, hfi_id, HFI_HOST_FLAGS_NONE,
 				     get_port_info(inst, cap_id),
@@ -911,21 +909,21 @@ int set_gop_size(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 
 int set_bitrate(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 {
-	//TODO: Vikash
 	u32 hfi_id, hfi_val;
-	s32 prepend_sps_pps;
 
-	prepend_sps_pps = inst->cap[PREPEND_SPSPPS_TO_IDR].value;
+	if (inst->cap[BIT_RATE].flags & CAP_FLAG_CLIENT_SET)
+		goto set_total_bitrate;
+
+	if (inst->vb2q_dst->streaming)
+		return 0;
+
+set_total_bitrate:
 	hfi_id = inst->cap[cap_id].hfi_id;
-
-	if (prepend_sps_pps)
-		hfi_val = HFI_SYNC_FRAME_REQUEST_WITH_PREFIX_SEQ_HDR;
-	else
-		hfi_val = HFI_SYNC_FRAME_REQUEST_WITHOUT_SEQ_HDR;
+	hfi_val = inst->cap[cap_id].value;
 
 	return iris_hfi_set_property(inst, hfi_id, HFI_HOST_FLAGS_NONE,
 				     get_port_info(inst, cap_id),
-				     HFI_PAYLOAD_U32_ENUM,
+				     HFI_PAYLOAD_U32,
 				     &hfi_val, sizeof(u32));
 }
 
@@ -990,7 +988,7 @@ int set_use_and_mark_ltr(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 
 int set_ir_period(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 {
-	u32 hfi_id, hfi_val;
+	u32 hfi_id = 0, hfi_val;
 
 	hfi_val = inst->cap[cap_id].value;
 
@@ -1258,7 +1256,7 @@ int adjust_bitrate(struct iris_inst *inst, struct v4l2_ctrl *ctrl)
 {
 	u32 layer_br_caps[6] = {L0_BR, L1_BR, L2_BR, L3_BR, L4_BR, L5_BR};
 	u32 adjusted_value, cumulative_bitrate, cap_id, cap_val, i;
-	s32 layer_count, max_bitrate, entropy_mode;
+	s32 layer_count, max_bitrate = 0, entropy_mode;
 
 	adjusted_value = ctrl ? ctrl->val : inst->cap[BIT_RATE].value;
 
