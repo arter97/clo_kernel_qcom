@@ -46,7 +46,7 @@
 #define QCOM_ICE_REG_HWKM_BANK0_BBAC_4		0x5010
 
 /* QCOM ICE HWKM BIST vals */
-#define QCOM_ICE_HWKM_BIST_DONE_V1_VAL		0x11
+#define QCOM_ICE_HWKM_BIST_DONE_V1_VAL		0x14007
 #define QCOM_ICE_HWKM_BIST_DONE_V2_VAL		0x287
 
 /* BIST ("built-in self-test") status flags */
@@ -297,8 +297,7 @@ EXPORT_SYMBOL_GPL(qcom_ice_suspend);
  */
 static int translate_hwkm_slot(struct qcom_ice *ice, int slot)
 {
-	return (ice->hwkm_version == 1) ?
-	       (10 + slot * 2) : (slot * 2);
+	return (ice->hwkm_version == 1) ? slot : (slot * 2);
 }
 
 static int qcom_ice_program_wrapped_key(struct qcom_ice *ice,
@@ -351,8 +350,8 @@ int qcom_ice_program_key(struct qcom_ice *ice,
 
 	/* Only AES-256-XTS has been tested so far. */
 	if (algorithm_id != QCOM_ICE_CRYPTO_ALG_AES_XTS ||
-	    key_size != QCOM_ICE_CRYPTO_KEY_SIZE_256 ||
-	    key_size != QCOM_ICE_CRYPTO_KEY_SIZE_WRAPPED) {
+	    (key_size != QCOM_ICE_CRYPTO_KEY_SIZE_256 &&
+	    key_size != QCOM_ICE_CRYPTO_KEY_SIZE_WRAPPED)) {
 		dev_err_ratelimited(dev,
 				    "Unhandled crypto capability; algorithm_id=%d, key_size=%d\n",
 				    algorithm_id, key_size);
@@ -362,8 +361,8 @@ int qcom_ice_program_key(struct qcom_ice *ice,
 	if (bkey->crypto_cfg.key_type == BLK_CRYPTO_KEY_TYPE_HW_WRAPPED) {
 		if (!ice->hwkm_version)
 			return -EINVAL;
-		err = qcom_ice_program_wrapped_key(ice, bkey, slot,
-						   data_unit_size);
+		err = qcom_ice_program_wrapped_key(ice, bkey, data_unit_size,
+				slot);
 	} else {
 		if (bkey->size != QCOM_ICE_CRYPTO_KEY_SIZE_256)
 			dev_err_ratelimited(dev,
@@ -429,13 +428,19 @@ EXPORT_SYMBOL_GPL(qcom_ice_derive_sw_secret);
  * Make a scm call into trustzone to generate a wrapped key for storage
  * encryption using hwkm.
  *
- * Return: 0 on success; err on failure.
+ * Return: Keysize on success; err on failure.
  */
 int qcom_ice_generate_key(struct qcom_ice *ice,
 			  u8 lt_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
 {
-	return qcom_scm_generate_ice_key(lt_key,
+	int ret;
+
+	ret = qcom_scm_generate_ice_key(lt_key,
 					 QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
+	if (!ret)
+		return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
+	else
+		return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_ice_generate_key);
 
@@ -450,13 +455,19 @@ EXPORT_SYMBOL_GPL(qcom_ice_generate_key);
  * encryption by rewrapping the longterm wrapped key with a per boot ephemeral
  * key using hwkm.
  *
- * Return: 0 on success; err on failure.
+ * Return: Keysize on success; err on failure.
  */
 int qcom_ice_prepare_key(struct qcom_ice *ice, const u8 *lt_key, size_t lt_key_size,
 			 u8 eph_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
 {
-	return qcom_scm_prepare_ice_key(lt_key, lt_key_size, eph_key,
+	int ret;
+
+	ret = qcom_scm_prepare_ice_key(lt_key, lt_key_size, eph_key,
 					QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
+	if (!ret)
+		return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
+	else
+		return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_ice_prepare_key);
 
@@ -470,13 +481,19 @@ EXPORT_SYMBOL_GPL(qcom_ice_prepare_key);
  * Make a scm call into trustzone to import a raw key for storage encryption
  * and generate a longterm wrapped key using hwkm.
  *
- * Return: 0 on success; err on failure.
+ * Return: Keysize on success; err on failure.
  */
 int qcom_ice_import_key(struct qcom_ice *ice, const u8 *imp_key, size_t imp_key_size,
 			u8 lt_key[BLK_CRYPTO_MAX_HW_WRAPPED_KEY_SIZE])
 {
-	return qcom_scm_import_ice_key(imp_key, imp_key_size, lt_key,
+	int ret;
+
+	ret = qcom_scm_import_ice_key(imp_key, imp_key_size, lt_key,
 				       QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version));
+	if (!ret)
+		return QCOM_ICE_HWKM_WRAPPED_KEY_SIZE(ice->hwkm_version);
+	else
+		return ret;
 }
 EXPORT_SYMBOL_GPL(qcom_ice_import_key);
 
