@@ -1,30 +1,17 @@
 la_targets = [
     # keep sorted
-    "autogvm",
-    "blair",
-    "gen3auto",
-    "niobe",
-    "pineapple",
-    "pitti",
-    "sdmsteppeauto",
 ]
 
 la_variants = [
     # keep sorted
-    "consolidate",
-    "gki",
 ]
 
 lxc_variants = [
     # keep sorted
-    "debug-defconfig",
-    "perf-defconfig",
 ]
 
 lxc_targets = [
     # keep sorted
-    "autogvm",
-    "gen4auto",
 ]
 
 le_32_targets = [
@@ -40,29 +27,22 @@ le_32_variants = [
 
 le_targets = [
     # keep sorted
-    "pineapple-allyes",
 ]
 
 le_variants = [
     # keep sorted
-    "perf-defconfig",
 ]
 
 vm_types = [
-    "tuivm",
-    "oemvm",
 ]
 
 vm_target_bases = [
-    "pineapple",
 ]
 
 vm_targets = ["{}-{}".format(t, vt) for t in vm_target_bases for vt in vm_types]
 
 vm_variants = [
     # keep sorted
-    "debug-defconfig",
-    "defconfig",
 ]
 
 def get_all_la_variants():
