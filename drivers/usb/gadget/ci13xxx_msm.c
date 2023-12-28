@@ -514,10 +514,16 @@ static void enable_usb_irq_timer_func(struct timer_list *t)
 	msm_usb_irq_disable(false);
 }
 
+static const struct of_device_id msm_hsusb_of_match[] = {
+	{ .compatible = "qcom,msm-hsusb" },
+	{}
+};
+
 static struct platform_driver ci13xxx_msm_driver = {
 	.probe = ci13xxx_msm_probe,
 	.driver = {
 		.name = "msm_hsusb",
+		.of_match_table = msm_hsusb_of_match,
 	},
 	.remove = ci13xxx_msm_remove,
 	.shutdown = ci13xxx_msm_shutdown,
