@@ -15,6 +15,7 @@ description:
 
 properties:
   compatible:
+<<<<<<< HEAD
     enum:
       - qcom,mdm9607-rpmpd
       - qcom,msm8226-rpmpd
@@ -51,6 +52,7 @@ properties:
       - qcom,sm8350-rpmhpd
       - qcom,sm8450-rpmhpd
       - qcom,sm8550-rpmhpd
+      - qcom,sm8650-rpmhpd
 
   '#power-domain-cells':
     const: 1
