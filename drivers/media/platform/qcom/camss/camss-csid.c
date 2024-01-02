@@ -29,6 +29,8 @@
 #define VFE_480_CSID_OFFSET 0x1200
 #define VFE_480_LITE_CSID_OFFSET 0x200
 
+#define VFE_165_CSID_OFFSET 0x4000
+
 #define MSM_CSID_NAME "msm_csid"
 
 const char * const csid_testgen_modes[] = {
@@ -1025,8 +1027,8 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 	csid->res->hw_ops->subdev_init(csid);
 
 	/* Memory */
-
-	if (camss->res->version == CAMSS_8250) {
+	switch (camss->res->version) {
+	case CAMSS_8250:
 		/* for titan 480, CSID registers are inside the VFE region,
 		 * between the VFE "top" and "bus" registers. this requires
 		 * VFE to be initialized before CSID
@@ -1035,10 +1037,25 @@ int msm_csid_subdev_init(struct camss *camss, struct csid_device *csid,
 			csid->base = camss->vfe[id].base + VFE_480_LITE_CSID_OFFSET;
 		else
 			csid->base = camss->vfe[id].base + VFE_480_CSID_OFFSET;
-	} else {
+
+		break;
+
+	case CAMSS_7280:
+		/* for titan 165, CSID registers are inside the VFE region,
+		 * between the VFE "top" and "bus" registers. this requires
+		 * VFE to be initialized before CSID
+		 */
+		csid->base = camss->vfe[id].base + VFE_165_CSID_OFFSET;
+
+		break;
+
+	default:
 		csid->base = devm_platform_ioremap_resource_byname(pdev, res->reg[0]);
 		if (IS_ERR(csid->base))
 			return PTR_ERR(csid->base);
+
+		break;
+
 	}
 
 	/* Interrupt */
