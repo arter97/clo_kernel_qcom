@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <dt-bindings/soc/qcom,gpr.h>
@@ -161,6 +161,16 @@
 	clocks = <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
 	clock-names = "core", "audio";
+
+	lpass_dmic45_clk: dmic45-clk-state {
+		pins = "gpio12";
+		function = "dmic3_clk";
+	};
+
+	lpass_dmic45_data: dmic45-data-state {
+		pins = "gpio13";
+		function = "dmic3_data";
+	};
 };
 
 &lpass_tx_macro {
@@ -186,7 +196,8 @@
 
 	pinctrl-names = "default";
 	pinctrl-0 = <&lpass_dmic01_clk>, <&lpass_dmic01_data>,
-		    <&lpass_dmic23_clk>, <&lpass_dmic23_data>;
+		    <&lpass_dmic23_clk>, <&lpass_dmic23_data>,
+		    <&lpass_dmic45_clk>, <&lpass_dmic45_data>;
 
 	status = "okay";
 };
