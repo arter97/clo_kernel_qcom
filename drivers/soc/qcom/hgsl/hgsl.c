@@ -3410,25 +3410,37 @@ out:
 
 static int hgsl_open(struct inode *inodep, struct file *filep)
 {
-	struct hgsl_priv *priv = hgsl_zalloc(sizeof(*priv));
+	struct hgsl_priv *priv = NULL;
 	struct qcom_hgsl  *hgsl = container_of(inodep->i_cdev,
 					       struct qcom_hgsl, cdev);
 	struct pid *pid = task_tgid(current);
 	struct task_struct *task = pid_task(pid, PIDTYPE_PID);
+	pid_t pid_nr;
 	int ret = 0;
 
-	if (!priv)
-		return -ENOMEM;
+	if (!task)
+		return -EINVAL;
 
-	if (!task) {
-		ret = -EINVAL;
+	pid_nr = task_pid_nr(task);
+
+	mutex_lock(&hgsl->mutex);
+	list_for_each_entry(priv, &hgsl->active_list, node) {
+		if (priv->pid == pid_nr) {
+			priv->open_count++;
+			goto out;
+		}
+	}
+
+	priv = hgsl_zalloc(sizeof(*priv));
+	if (!priv) {
+		ret = -ENOMEM;
 		goto out;
 	}
 
 	INIT_LIST_HEAD(&priv->mem_mapped);
 	INIT_LIST_HEAD(&priv->mem_allocated);
 	mutex_init(&priv->lock);
-	priv->pid = task_pid_nr(task);
+	priv->pid = pid_nr;
 
 	ret = hgsl_hyp_init(&priv->hyp_priv, hgsl->dev,
 		priv->pid, task->comm);
@@ -3436,13 +3448,17 @@ static int hgsl_open(struct inode *inodep, struct file *filep)
 		goto out;
 
 	priv->dev = hgsl;
-	filep->private_data = priv;
+	priv->open_count = 1;
 
+	list_add(&priv->node, &hgsl->active_list);
 	hgsl_sysfs_client_init(priv);
 	hgsl_debugfs_client_init(priv);
 out:
 	if (ret != 0)
 		kfree(priv);
+	else
+		filep->private_data = priv;
+	mutex_unlock(&hgsl->mutex);
 	return ret;
 }
 
@@ -3506,8 +3522,6 @@ static int _hgsl_release(struct hgsl_priv *priv)
 	struct qcom_hgsl *hgsl = priv->dev;
 	uint32_t i;
 	int ret;
-	hgsl_debugfs_client_release(priv);
-	hgsl_sysfs_client_release(priv);
 
 	read_lock(&hgsl->ctxt_lock);
 	for (i = 0; i < HGSL_CONTEXT_NUM; i++) {
@@ -3588,10 +3602,16 @@ static int hgsl_release(struct inode *inodep, struct file *filep)
 	struct qcom_hgsl *hgsl = priv->dev;
 
 	mutex_lock(&hgsl->mutex);
-	list_add(&priv->node, &hgsl->release_list);
+	if (priv->open_count < 1)
+		WARN_ON(1);
+	else if (--priv->open_count == 0) {
+		list_move(&priv->node, &hgsl->release_list);
+		hgsl_debugfs_client_release(priv);
+		hgsl_sysfs_client_release(priv);
+		queue_work(hgsl->release_wq, &hgsl->release_work);
+	}
 	mutex_unlock(&hgsl->mutex);
 
-	queue_work(hgsl->release_wq, &hgsl->release_work);
 	return 0;
 }
 
@@ -4287,6 +4307,8 @@ static int qcom_hgsl_probe(struct platform_device *pdev)
 									ret);
 		goto exit_dereg;
 	}
+
+	INIT_LIST_HEAD(&hgsl_dev->active_list);
 
 	ret = hgsl_init_release_wq(hgsl_dev);
 	if (ret < 0) {
