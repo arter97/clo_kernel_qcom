@@ -57,7 +57,6 @@ static u64 sched_clock_last;
 static bool walt_clock_suspended;
 
 static bool use_cycle_counter;
-static DEFINE_MUTEX(cluster_lock);
 static u64 walt_load_reported_window;
 
 static struct irq_work walt_cpufreq_irq_work;
@@ -115,6 +114,9 @@ int set_task_boost(int boost, u64 period)
 {
 	struct walt_task_struct *wts = (struct walt_task_struct *) current->android_vendor_data1;
 
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
+
 	if (boost < TASK_BOOST_NONE || boost >= TASK_BOOST_END)
 		return -EINVAL;
 	if (boost) {
@@ -134,10 +136,11 @@ static inline void acquire_rq_locks_irqsave(const cpumask_t *cpus,
 				     unsigned long *flags)
 {
 	int cpu;
-	int level = 0;
+	int level;
 
 	local_irq_save(*flags);
 
+	level = 0;
 	for_each_cpu(cpu, cpus) {
 		if (level == 0)
 			raw_spin_lock(&cpu_rq(cpu)->__lock);
@@ -417,17 +420,20 @@ update_window_start(struct rq *rq, u64 wallclock, int event)
 	bool full_window;
 
 	if (wallclock < wrq->latest_clock) {
-		printk_deferred("WALT-BUG CPU%d; wallclock=%llu(0x%llx) is lesser than latest_clock=%llu(0x%llx)",
-				rq->cpu, wallclock, wallclock, wrq->latest_clock,
-				wrq->latest_clock);
-		WALT_PANIC(1);
+		WALT_BUG(WALT_BUG_WALT, NULL,
+			"on CPU%d; wallclock=%llu(0x%llx) is lesser than latest_clock=%llu(0x%llx)",
+			rq->cpu, wallclock, wallclock, wrq->latest_clock,
+			wrq->latest_clock);
+		wallclock = wrq->latest_clock;
 	}
 	delta = wallclock - wrq->window_start;
 	if (delta < 0) {
-		printk_deferred("WALT-BUG CPU%d; wallclock=%llu(0x%llx) is lesser than window_start=%llu(0x%llx)",
-				rq->cpu, wallclock, wallclock,
-				wrq->window_start, wrq->window_start);
-		WALT_PANIC(1);
+		WALT_BUG(WALT_BUG_WALT, NULL,
+			" on CPU%d; wallclock=%llu(0x%llx) is lesser than window_start=%llu(0x%llx)",
+			rq->cpu, wallclock, wallclock,
+			wrq->window_start, wrq->window_start);
+		delta = 0;
+		wallclock = wrq->window_start;
 	}
 	wrq->latest_clock = wallclock;
 	if (delta < sched_ravg_window)
@@ -2312,10 +2318,11 @@ update_task_rq_cpu_cycles(struct task_struct *p, struct rq *rq, int event,
 			time_delta = wallclock - wts->mark_start;
 
 		if ((s64)time_delta < 0) {
-			printk_deferred("WALT-BUG pid=%u CPU%d wallclock=%llu(0x%llx) < mark_start=%llu(0x%llx) event=%d irqtime=%llu",
-					 p->pid, rq->cpu, wallclock, wallclock,
-					 wts->mark_start, wts->mark_start, event, irqtime);
-			WALT_PANIC((s64)time_delta < 0);
+			WALT_BUG(WALT_BUG_WALT, p,
+				"WALT-BUG pid=%u CPU%d wallclock=%llu(0x%llx) < mark_start=%llu(0x%llx) event=%d irqtime=%llu",
+				 p->pid, rq->cpu, wallclock, wallclock,
+				 wts->mark_start, wts->mark_start, event, irqtime);
+			time_delta = 1;
 		}
 
 		wrq->task_exec_scale = DIV64_U64_ROUNDUP(cycles_delta *
@@ -2356,6 +2363,13 @@ static void walt_update_task_ravg(struct task_struct *p, struct rq *rq, int even
 
 	if (!wrq->window_start || wts->mark_start == wallclock)
 		return;
+
+	if (unlikely(!raw_spin_is_locked(&rq->__lock)))
+		WALT_BUG(WALT_BUG_WALT, p,
+			"on CPU%d: %s task %s(%d) unlocked access for cpu=%d suspende=%d last_clk=%llu stack[%pS <== %pS <== %pS]\n",
+			raw_smp_processor_id(), __func__, p->comm, p->pid, rq->cpu,
+			walt_clock_suspended, sched_clock_last,
+			(void *)CALLER_ADDR0, (void *)CALLER_ADDR1, (void *)CALLER_ADDR2);
 
 	walt_lockdep_assert_rq(rq, p);
 
@@ -4268,6 +4282,14 @@ static inline void __walt_irq_work_locked(bool is_migration, bool is_asym_migrat
 			if (rq->curr) {
 				/* only update ravg for locked cpus */
 				if (cpumask_intersects(lock_cpus, &cluster->cpus)) {
+					if (unlikely(!raw_spin_is_locked(&rq->__lock)))
+						WALT_BUG(WALT_BUG_WALT, NULL,
+						"WALT-BUG %s unlocked cpu=%d is_migration=%d is_asym_migration=%d is_shared_rail_migration=%d lock_cpus=%*pbl suspended=%d last_clk=%llu stack[%pS <= %pS <= %pS]\n",
+						__func__, rq->cpu, is_migration, is_asym_migration,
+						is_shared_rail_migration,
+						cpumask_pr_args(lock_cpus), walt_clock_suspended,
+						sched_clock_last, (void *)CALLER_ADDR0,
+						(void *)CALLER_ADDR1, (void *)CALLER_ADDR2);
 					walt_update_task_ravg(rq->curr, rq,
 							      TASK_UPDATE, wc, 0);
 					account_load_subtractions(rq);
@@ -4334,6 +4356,10 @@ static inline void __walt_irq_work_locked(bool is_migration, bool is_asym_migrat
 				walt_update_irqload(rq);
 		}
 	}
+
+	/* update fmax cap for frequency relation */
+	for_each_sched_cluster(cluster)
+		update_freq_relation(cluster);
 
 	/*
 	 * If the window change request is in pending, good place to
@@ -4452,7 +4478,7 @@ static void walt_irq_work(struct irq_work *irq_work)
 {
 	cpumask_t lock_cpus;
 	struct walt_rq *wrq;
-	int level = 0;
+	int level;
 	int cpu;
 	bool is_migration = false, is_asym_migration = false, is_shared_rail_migration = false;
 	u32 wakeup_ctr_sum = 0;
@@ -4486,6 +4512,7 @@ static void walt_irq_work(struct irq_work *irq_work)
 		}
 	}
 
+	level = 0;
 	for_each_cpu(cpu, &lock_cpus) {
 		if (level == 0)
 			raw_spin_lock(&cpu_rq(cpu)->__lock);
@@ -4580,6 +4607,7 @@ void fmax_uncap_checkpoint(int nr_big, u64 window_start, u32 wakeup_ctr_sum)
 	bool fmax_uncap_load_detected;
 	static u64 fmax_uncap_timestamp;
 	int i;
+	bool change = false;
 
 	fmax_uncap_load_detected = (nr_big >= 7 && wakeup_ctr_sum < WAKEUP_CTR_THRESH) ||
 			is_full_throttle_boost() ||
@@ -4591,17 +4619,59 @@ void fmax_uncap_checkpoint(int nr_big, u64 window_start, u32 wakeup_ctr_sum)
 			for (i = 0; i < num_sched_clusters; i++)
 				fmax_cap[SMART_FMAX_CAP][i] = FREQ_QOS_MAX_DEFAULT_VALUE;
 		fmax_uncap_timestamp = window_start;
-	} else if (fmax_uncap_timestamp &&
-			(window_start > fmax_uncap_timestamp + FMAX_CAP_HYSTERESIS)) {
-		for (int i = 0; i < num_sched_clusters; i++)
-			fmax_cap[SMART_FMAX_CAP][i] = sysctl_fmax_cap[i];
-		fmax_uncap_timestamp = 0;
+	} else {
+		for (int i = 0; i < num_sched_clusters; i++) {
+			if (fmax_cap[SMART_FMAX_CAP][i] != sysctl_fmax_cap[i]) {
+				change = true;
+				break;
+			}
+		}
+		if (change || (fmax_uncap_timestamp &&
+			(window_start > fmax_uncap_timestamp + FMAX_CAP_HYSTERESIS))) {
+			for (int i = 0; i < num_sched_clusters; i++)
+				fmax_cap[SMART_FMAX_CAP][i] = sysctl_fmax_cap[i];
+			fmax_uncap_timestamp = 0;
+		}
 	}
 
 	update_fmax_cap_capacities(SMART_FMAX_CAP);
 
 	trace_sched_fmax_uncap(nr_big, window_start, wakeup_ctr_sum,
 			fmax_uncap_load_detected, fmax_uncap_timestamp);
+}
+
+void update_freq_relation(struct walt_sched_cluster *cluster)
+{
+	int cluster_id = cluster->id;
+	int tgt_cpu, i;
+	unsigned int tgt_freq;
+	struct walt_sched_cluster *tgt_cluster;
+	unsigned int prev_cap = fmax_cap[FREQ_REL_CAP][cluster_id];
+
+	for (i = 0; i < MAX_FREQ_RELATIONS; i++) {
+		tgt_cpu = relation_data[cluster_id][i].target_cluster_cpu;
+		if (tgt_cpu < 0)
+			break;
+		tgt_cluster = cpu_cluster(tgt_cpu);
+		tgt_freq = (arch_scale_freq_capacity(tgt_cpu) *
+			(unsigned long)tgt_cluster->max_possible_freq) >> SCHED_CAPACITY_SHIFT;
+
+		if (tgt_freq < relation_data[cluster_id][i].tgt_freq) {
+			fmax_cap[FREQ_REL_CAP][cluster_id] = relation_data[cluster_id][i].src_freq;
+			break;
+		}
+	}
+
+	/*
+	 * If there is no relation further or target cluster is frequency
+	 * limited below the target cluster's frequency threshold.
+	 */
+	if ((tgt_cpu < 0) ||
+	    ((tgt_cpu >= 0) && relation_data[cluster_id][i].tgt_freq > tgt_cluster->max_freq))
+		fmax_cap[FREQ_REL_CAP][cluster_id] = FREQ_QOS_MAX_DEFAULT_VALUE;
+
+	if (prev_cap != fmax_cap[FREQ_REL_CAP][cluster_id])
+		update_fmax_cap_capacities(FREQ_REL_CAP);
 }
 
 void walt_fill_ta_data(struct core_ctl_notif_data *data)
@@ -5229,10 +5299,13 @@ static void walt_do_sched_yield(void *unused, struct rq *rq)
 		per_cpu(rt_task_arrival_time, cpu_of(rq)) = 0;
 }
 
-void walt_set_cpus_taken(struct cpumask *set)
+int walt_set_cpus_taken(struct cpumask *set)
 {
 	unsigned long flags;
 	int cpu;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	spin_lock_irqsave(&cpus_taken_lock, flags);
 	for_each_cpu(cpu, set) {
@@ -5240,13 +5313,17 @@ void walt_set_cpus_taken(struct cpumask *set)
 	}
 	cpumask_or(&walt_cpus_taken_mask, &walt_cpus_taken_mask, set);
 	spin_unlock_irqrestore(&cpus_taken_lock, flags);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(walt_set_cpus_taken);
 
-void walt_unset_cpus_taken(struct cpumask *unset)
+int walt_unset_cpus_taken(struct cpumask *unset)
 {
 	unsigned long flags;
 	int cpu;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	spin_lock_irqsave(&cpus_taken_lock, flags);
 	for_each_cpu(cpu, unset) {
@@ -5256,6 +5333,7 @@ void walt_unset_cpus_taken(struct cpumask *unset)
 			cpumask_clear_cpu(cpu, &walt_cpus_taken_mask);
 	}
 	spin_unlock_irqrestore(&cpus_taken_lock, flags);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(walt_unset_cpus_taken);
 
@@ -5265,10 +5343,14 @@ cpumask_t walt_get_cpus_taken(void)
 }
 EXPORT_SYMBOL_GPL(walt_get_cpus_taken);
 
-void walt_get_cpus_in_state1(struct cpumask *cpus)
+int walt_get_cpus_in_state1(struct cpumask *cpus)
 {
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
+
 	cpumask_or(cpus, cpu_partial_halt_mask, &sched_cluster[0]->cpus);
 	cpumask_andnot(cpus, cpus, cpu_halt_mask);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(walt_get_cpus_in_state1);
 
@@ -5338,9 +5420,10 @@ static int walt_init_stop_handler(void *data)
 	int cpu;
 	struct task_struct *g, *p;
 	struct walt_rq *wrq;
-	int level = 0;
+	int level;
 
 	read_lock(&tasklist_lock);
+	level = 0;
 	for_each_possible_cpu(cpu) {
 		if (level == 0)
 			raw_spin_lock(&cpu_rq(cpu)->__lock);
@@ -5417,6 +5500,7 @@ static void walt_init(struct work_struct *work)
 	walt_rt_init();
 	walt_cfs_init();
 	walt_halt_init();
+	walt_mvp_lock_ordering_init();
 
 	wait_for_completion_interruptible(&tick_sched_clock_completion);
 

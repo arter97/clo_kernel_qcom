@@ -856,7 +856,6 @@ int usb_gadget_activate(struct usb_gadget *gadget)
 	 */
 	if (gadget->connected)
 		ret = usb_gadget_connect_locked(gadget);
-	mutex_unlock(&gadget->udc->connect_lock);
 
 unlock:
 	mutex_unlock(&gadget->udc->connect_lock);
@@ -1101,14 +1100,10 @@ EXPORT_SYMBOL_GPL(usb_gadget_set_state);
 /* Acquire connect_lock before calling this function. */
 static int usb_udc_connect_control_locked(struct usb_udc *udc) __must_hold(&udc->connect_lock)
 {
-	int ret;
-
 	if (udc->vbus)
-		ret = usb_gadget_connect_locked(udc->gadget);
+		return usb_gadget_connect_locked(udc->gadget);
 	else
-		ret = usb_gadget_disconnect_locked(udc->gadget);
-
-	return ret;
+		return usb_gadget_disconnect_locked(udc->gadget);
 }
 
 static void vbus_event_work(struct work_struct *work)
@@ -1592,10 +1587,12 @@ static int gadget_bind_driver(struct device *dev)
 	return 0;
 
  err_connect_control:
+	udc->allow_connect = false;
 	usb_gadget_disable_async_callbacks(udc);
 	if (gadget->irq)
 		synchronize_irq(gadget->irq);
 	usb_gadget_udc_stop_locked(udc);
+	mutex_unlock(&udc->connect_lock);
 
  err_start:
 	driver->unbind(udc->gadget);
