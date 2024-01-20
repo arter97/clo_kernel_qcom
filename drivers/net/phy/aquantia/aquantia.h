@@ -20,6 +20,18 @@ int aqr_hwmon_probe(struct phy_device *phydev);
 static inline int aqr_hwmon_probe(struct phy_device *phydev) { return 0; }
 #endif
 
+/*Include XFI mode support*/
+#define USXGMII_IN_XFI_MODE
+
+#define MDIO_C22EXT_WAKEUP_FRAME_DETECT         0xC355
+#define ENABLE_WAKEUP_FRAME_DETECT              BIT(0)
+
+#define MDIO_C22EXT_MAGIC_FRAME_DETECT          0xC356
+#define ENABLE_MAGIC_FRAME_DETECT               BIT(0)
+
+#define MDIO_C22EXT_WOL_INTN_TRIGGER            0xC357
+#define ENABLE_WOL_INTN_TRIGGER					BIT(15)
+
 /* MDIO_MMD_C22EXT */
 #define MDIO_C22EXT_STAT_SGMII_RX_GOOD_FRAMES		0xd292
 #define MDIO_C22EXT_STAT_SGMII_RX_BAD_FRAMES		0xd294
@@ -60,4 +72,5 @@ struct aqr107_priv {
 	struct aqr_port port;
 	struct aqr_macsec_cfg macsec_cfg;
 #endif
+	u32 wol;
 };

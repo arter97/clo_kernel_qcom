@@ -92,6 +92,10 @@
 #define MDIO_C22EXT_MAGIC_FRAME_WORD1		0xC33A
 #define MDIO_C22EXT_MAGIC_FRAME_WORD2		0xC33B
 
+#define MDIO_C22EXT_GbE_PHY_SGMII_TX_INTR_MASK1	0xF420
+#define SGMII0_MAGIC_PKT_INTR	BIT(5)
+#define SGMII0_WAKEUP_FRAME_INTR	BIT(4)
+
 /* Vendor specific 1, MDIO_MMD_VEND1 */
 #define VEND1_GLOBAL_FW_ID			0x0020
 #define VEND1_GLOBAL_FW_ID_MAJOR		GENMASK(15, 8)
@@ -177,7 +181,6 @@ struct fw_header {
 	u8 dram_size[3];
 };
 #pragma pack()
-
 
 static int aqr107_get_sset_count(struct phy_device *phydev)
 {
@@ -605,11 +608,160 @@ static int aqcs109_config_init(struct phy_device *phydev)
 	 * PMA speed ability bits are the same for all members of the family,
 	 * AQCS109 however supports speeds up to 2.5G only.
 	 */
-	ret = phy_set_max_speed(phydev, SPEED_2500);
-	if (ret)
-		return ret;
+	phy_set_max_speed(phydev, SPEED_2500);
 
 	return aqr107_set_downshift(phydev, MDIO_AN_VEND_PROV_DOWNSHIFT_DFLT);
+}
+
+static void aqr113_get_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
+{
+	int val = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV);
+
+	wol->supported = WAKE_MAGIC | WAKE_PHY;
+	wol->wolopts = (val & MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE) ? WAKE_PHY : 0;
+}
+
+static int aqr113_set_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
+{
+	struct net_device *ndev = phydev->attached_dev;
+	struct aqr107_priv *priv = phydev->priv;
+	const u8 *addr;
+	uint16_t tmp16;
+	int err = 0;
+
+	if (!ndev)
+		return -ENODEV;
+
+	if((priv->wol & WAKE_MAGIC) && !(wol->wolopts & WAKE_MAGIC)) {
+
+		/* 7.c410.6 = 0x0 - Unset WoL enable bit */
+		err = phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
+			MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE);
+		if(err < 0)
+			return err;
+
+		/* Restore System Interface back to the original mode 
+		   before WoL was initialized using SGMII mode. */
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x31B, 0x100);
+		if(err < 0)
+			return err;
+
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x31C, 0x100);
+		if(err < 0)
+			return err;
+
+		/* Perform an auto-negotiation */
+		phy_set_bits_mmd(phydev, MDIO_MMD_AN, 0x0, BIT(9));
+	}
+
+	if (wol->wolopts & WAKE_MAGIC) {
+
+		addr = (const u8*)ndev->dev_addr;
+
+		if (!is_valid_ether_addr(addr)) {
+			return -EINVAL;
+		}
+
+		/* 1. Write WOL mac address word */
+		tmp16 = (addr[1] << 8) | addr[0];
+		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT,
+					MDIO_C22EXT_MAGIC_FRAME_WORD0, tmp16);
+
+		if (err < 0)
+			return err;
+
+		tmp16 = (addr[3] << 8) | addr[2];
+		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT, 
+					MDIO_C22EXT_MAGIC_FRAME_WORD1, tmp16);
+
+		if (err < 0)
+			return err;
+
+		tmp16 = (addr[5] << 8) | addr[4];
+		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT,
+					 MDIO_C22EXT_MAGIC_FRAME_WORD2, tmp16);
+
+		/* 3. Disables all advertised speeds except for the WoL speed */
+		err = phy_write_mmd(phydev, MDIO_MMD_AN, 0x20, 0x0001);
+		if(err < 0)
+			return err;
+
+		/* 7.C400 = 0x90xx */
+		err = phy_write_mmd(phydev, MDIO_MMD_AN, 0xc400, 0x9040);
+		if(err < 0)
+			return err;
+
+		/* 4. Enable the magic frame and wake up frame detection for the PHY */
+		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_WAKEUP_FRAME_DETECT, 0x0001);
+		if(err < 0)
+			return err;
+
+		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_MAGIC_FRAME_DETECT, 0x0001);
+		if(err < 0)
+			return err;
+
+		/* 5. Set the mode and enable WoL */
+		/* WoL mode.  1000BASE-T = 1
+		 *            100BASE-T = 0
+		 */
+		err = phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
+				MDIO_AN_RSVD_VEND_PROV_WOL_MODE);
+		if(err < 0)
+			return err;
+
+		err = phy_set_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
+				MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE);
+		if(err < 0)
+			return err;
+		
+		/* 6. Set the WoL INT_N trigger bit */
+		err = phy_set_bits_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_WOL_INTN_TRIGGER,
+				ENABLE_WOL_INTN_TRIGGER);
+		if(err < 0)
+			return err;
+
+		/* 7. Enable Interrupt INT_N Generation at pin level */
+		err = phy_set_bits_mmd(phydev, MDIO_MMD_C22EXT,
+					 MDIO_C22EXT_GbE_PHY_SGMII_TX_INTR_MASK1,
+					 SGMII0_MAGIC_PKT_INTR | SGMII0_WAKEUP_FRAME_INTR);
+		if(err < 0)
+			return err;
+
+		err = phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, VEND1_GLOBAL_INT_STD_MASK,
+					 VEND1_GLOBAL_INT_STD_MASK_ALL);
+		if(err < 0)
+			return err;
+		err = phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
+					 VEND1_GLOBAL_INT_VEND_MASK, VEND1_GLOBAL_INT_VEND_MASK_GBE);
+		if(err < 0)
+			return err;
+
+		if (!wol->wolopts & WAKE_PHY) {
+			/* Disable Link Connect/Disconnect INTR */
+			err = phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_TX_VEND_INT_MASK2,
+									MDIO_AN_TX_VEND_INT_MASK2_LINK);
+			if (err < 0)
+				return err;
+			/* Disable AN INTR */
+			err = phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, VEND1_GLOBAL_INT_VEND_MASK,
+									VEND1_GLOBAL_INT_VEND_MASK_AN);
+		}
+
+		/* 8. Set the system interface to SGMII */
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x31B, 0x0B);
+		if(err < 0)
+			return err;
+
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x31C, 0x0B);
+		if(err < 0)
+			return err;
+
+		/* 9. Perform an auto-negotiation */
+		phy_set_bits_mmd(phydev, MDIO_MMD_AN, 0x0, BIT(9));
+	}
+
+	priv->wol = wol->wolopts;
+	return err;
 }
 
 static int aqr113_fix_provisioning(struct phy_device *phydev)
@@ -618,17 +770,17 @@ static int aqr113_fix_provisioning(struct phy_device *phydev)
 	int i, val = 0;
 
 	for (i = 0; i < ARRAY_SIZE(config_regs); i++) {
-	    val = phy_read_mmd(phydev, MDIO_MMD_VEND1, config_regs[i]);
-	    printk(KERN_INFO"aqr113_fix_provisioning: set provisioning for reg:%x old value=%x\n", config_regs[i], val);
+		val = phy_read_mmd(phydev, MDIO_MMD_VEND1, config_regs[i]);
+		printk(KERN_INFO"Set provisioning for reg:%x old value=%x\n", config_regs[i], val);
 #if IS_ENABLED(CONFIG_AQUANTIA_MACSEC)
-	    /* Enabling MACSEC provisioning */
-	    val |= BIT(9);
+		/* Enabling MACSEC provisioning */
+		val |= BIT(9);
 #endif
-	    /* Enabling EEE provisioning */
-	    val |= BIT(11);
+		/* Enabling EEE provisioning */
+		val |= BIT(11);
 
-	    printk(KERN_INFO"aqr113_fix_provisioning: set provisioning for reg:%x new value=%x\n", config_regs[i], val);
-	    phy_write_mmd(phydev, MDIO_MMD_VEND1, config_regs[i], val);
+		printk(KERN_INFO"Set provisioning for reg:%x new value=%x\n", config_regs[i], val);
+		phy_write_mmd(phydev, MDIO_MMD_VEND1, config_regs[i], val);
 	}
 
 	return 0;
@@ -642,7 +794,6 @@ static int aqr113_fix_provisioning(struct phy_device *phydev)
 #define AQR113_FW "firmware/aqr113.cld"
 
 #ifdef MDIO_LOAD
-
 /* load data into the phy's memory */
 static int aquantia_load_memory(struct phy_device *phydev, u32 addr,
 				const u8 *data, size_t len)
@@ -689,7 +840,6 @@ static u32 unpack_u24(const u8 *data)
 static int aquantia_upload_firmware(struct phy_device *phydev)
 {
 	int ret;
-
 	size_t fw_length = 0;
 
 	const struct firmware *fw;
@@ -697,7 +847,6 @@ static int aquantia_upload_firmware(struct phy_device *phydev)
 	char version[VERSION_STRING_SIZE];
 	u32 primary_offset, iram_offset, iram_size, dram_offset, dram_size;
 	const struct fw_header *header;
-
 
 	/* Load AQR113 firmware image */
 	ret = request_firmware(&fw, AQR113_FW, &phydev->mdio.dev);
@@ -831,63 +980,6 @@ static int aqr113_config_init(struct phy_device *phydev)
 	aqr107_read_downshift_event(phydev);
 
 	return aqr107_set_downshift(phydev, MDIO_AN_VEND_PROV_DOWNSHIFT_DFLT);
-}
-
-static void aqr113_get_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
-{
-	int val = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV);
-
-	wol->supported = WAKE_MAGIC | WAKE_PHY;
-
-	wol->wolopts = (val & MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE) ? WAKE_PHY : 0;
-}
-
-static int aqr113_set_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
-{
-	struct net_device *ndev = phydev->attached_dev;
-	const u8 *addr;
-	uint16_t i;
-	int err = 0;
-
-	if (!ndev)
-		return -ENODEV;
-
-	if (wol->wolopts & WAKE_PHY) {
-		phy_set_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
-				MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE);
-		/* Set 100BASE-TX WoL mode. For 1000BASE-T set WOL_MODE bit to 1. */
-		phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
-				MDIO_AN_RSVD_VEND_PROV_WOL_MODE);
-	} else {
-		phy_clear_bits_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV,
-				MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE);
-	}
-
-	if (wol->wolopts & WAKE_MAGIC)
-	{
-		addr = (const u8*)ndev->dev_addr;
-
-		if (!is_valid_ether_addr(addr))
-			return -EINVAL;
-
-		/* Write mac address by reversed word */
-		i = (addr[0] << 8) | addr[1];
-		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_MAGIC_FRAME_WORD0, i);
-
-		if (err < 0)
-			return err;
-
-		i = (addr[2] << 8) | addr[3];
-		phy_write_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_MAGIC_FRAME_WORD1, i);
-
-		if (err < 0)
-			return err;
-
-		i = (addr[4] << 8) | addr[5];
-		err = phy_write_mmd(phydev, MDIO_MMD_C22EXT, MDIO_C22EXT_MAGIC_FRAME_WORD2, i);
-	}
-
-	return err;
 }
 
 static void aqr107_link_change_notify(struct phy_device *phydev)

@@ -4,6 +4,7 @@
  */
 
 #include "macsec.h"
+#include <linux/version.h>
 #include <linux/rtnetlink.h>
 #include <asm/unaligned.h>
 
@@ -42,7 +43,7 @@ static int aqr_apply_macsec_cfg(struct aqr107_priv *priv);
 static int aqr_apply_secy_cfg(struct aqr107_priv *priv,
 			     const struct macsec_secy *secy);
 
-static void aqr_ether_addr_to_mac(u32 mac[2], unsigned char *emac)
+static void aqr_ether_addr_to_mac(u32 mac[2], const unsigned char *emac)
 {
 	u32 tmp[2] = { 0 };
 
@@ -300,8 +301,10 @@ static int aqr_mdo_dev_open(struct macsec_context *ctx)
 	struct phy_device *phydev = ctx->phydev;
 	int ret = 0;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	/*This function was never called before*/
 	/*Found during debug*/
@@ -318,8 +321,10 @@ static int aqr_mdo_dev_stop(struct macsec_context *ctx)
 	struct aqr107_priv *priv = ctx->phydev->priv;
 	int i;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	for (i = 0; i < AQR_MACSEC_MAX_SC; i++) {
 		if (priv->macsec_cfg.txsc_idx_busy & BIT(i))
@@ -484,10 +489,12 @@ static int aqr_mdo_add_secy(struct macsec_context *ctx)
 		printk(KERN_ERR "%s %d", "aqr_mdo_add_secy AQR_MACSEC_MAX_SC ENOSPC \n", ret);
 		return -ENOSPC;
 	}
+	#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare) {
 		printk(KERN_ERR "%s %d", "aqr_mdo_add_secy ctx->prepare \n", ret);
 		return 0;
 	}
+	#endif
 
 	cfg->sc_sa = sc_sa;
 	cfg->aq_txsc[txsc_idx].hw_sc_idx = aqr_to_hw_sc_idx(txsc_idx, sc_sa);
@@ -513,8 +520,10 @@ static int aqr_mdo_upd_secy(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -ENOENT;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	if (phydev->link && netif_running(secy->netdev))
 		ret = aqr_set_txsc(priv, txsc_idx);
@@ -564,8 +573,10 @@ static int aqr_mdo_del_secy(struct macsec_context *ctx)
 {
 	int ret = 0;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	ret = aqr_clear_secy(ctx->phydev, ctx->secy, AQR_CLEAR_ALL);
 
@@ -620,8 +631,10 @@ static int aqr_mdo_add_txsa(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_txsc = &cfg->aq_txsc[txsc_idx];
 	set_bit(ctx->sa.assoc_num, &aq_txsc->tx_sa_idx_busy);
@@ -651,8 +664,10 @@ static int aqr_mdo_upd_txsa(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_txsc = &cfg->aq_txsc[txsc_idx];
 
@@ -703,8 +718,10 @@ static int aqr_mdo_del_txsa(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	ret = aqr_clear_txsa(ctx->phydev, &cfg->aq_txsc[txsc_idx], ctx->sa.assoc_num,
 			    AQR_CLEAR_ALL);
@@ -802,8 +819,10 @@ static int aqr_mdo_add_rxsc(struct macsec_context *ctx)
 	if (rxsc_idx >= rxsc_idx_max)
 		return -ENOSPC;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	cfg->aq_rxsc[rxsc_idx].hw_sc_idx = aqr_to_hw_sc_idx(rxsc_idx,
 							   cfg->sc_sa);
@@ -831,8 +850,10 @@ static int aqr_mdo_upd_rxsc(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -ENOENT;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	if (ctx->phydev->link && netif_running(ctx->secy->netdev))
 		ret = aqr_set_rxsc(priv, rxsc_idx);
@@ -899,8 +920,10 @@ static int aqr_mdo_del_rxsc(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -ENOENT;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	if (ctx->phydev->link)
 		clear_type = AQR_CLEAR_ALL;
@@ -971,8 +994,10 @@ static int aqr_mdo_add_rxsa(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_rxsc = &priv->macsec_cfg.aq_rxsc[rxsc_idx];
 	set_bit(ctx->sa.assoc_num, &aq_rxsc->rx_sa_idx_busy);
@@ -1001,8 +1026,10 @@ static int aqr_mdo_upd_rxsa(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	if (ctx->phydev->link && netif_running(secy->netdev))
 		ret = aqr_update_rxsa(priv, cfg->aq_rxsc[rxsc_idx].hw_sc_idx,
@@ -1053,8 +1080,10 @@ static int aqr_mdo_del_rxsa(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	ret = aqr_clear_rxsa(ctx->phydev, &cfg->aq_rxsc[rxsc_idx], ctx->sa.assoc_num,
 			    AQR_CLEAR_ALL);
@@ -1068,8 +1097,10 @@ static int aqr_mdo_get_dev_stats(struct macsec_context *ctx)
 	struct aqr_macsec_common_stats *stats = &priv->macsec_cfg.stats;
 	struct aqr_port *port = &priv->port;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aqr_get_macsec_common_stats(port, stats);
 
@@ -1097,8 +1128,10 @@ static int aqr_mdo_get_tx_sc_stats(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -ENOENT;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_txsc = &priv->macsec_cfg.aq_txsc[txsc_idx];
 	stats = &aq_txsc->stats;
@@ -1130,8 +1163,10 @@ static int aqr_mdo_get_tx_sa_stats(struct macsec_context *ctx)
 	if (txsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_txsc = &cfg->aq_txsc[txsc_idx];
 	sa_idx = aq_txsc->hw_sc_idx | ctx->sa.assoc_num;
@@ -1171,8 +1206,10 @@ static int aqr_mdo_get_rx_sc_stats(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -ENOENT;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_rxsc = &cfg->aq_rxsc[rxsc_idx];
 	for (i = 0; i < MACSEC_NUM_AN; i++) {
@@ -1220,8 +1257,10 @@ static int aqr_mdo_get_rx_sa_stats(struct macsec_context *ctx)
 	if (rxsc_idx < 0)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	if (ctx->prepare)
 		return 0;
+#endif
 
 	aq_rxsc = &cfg->aq_rxsc[rxsc_idx];
 	stats = &aq_rxsc->rx_sa_stats[ctx->sa.assoc_num];
