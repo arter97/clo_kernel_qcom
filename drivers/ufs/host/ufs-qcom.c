@@ -5521,7 +5521,7 @@ static void ufs_qcom_hook_send_command(void *param, struct ufs_hba *hba,
 			/* The dev cmd would not be logged in MCQ mode provisionally */
 			u32 utag = (rq->mq_hctx->queue_num << BLK_MQ_UNIQUE_TAG_BITS) |
 						(rq->tag & BLK_MQ_UNIQUE_TAG_MASK);
-			u32 idx = blk_mq_unique_tag_to_hwq(utag) + 1;
+			u32 idx = blk_mq_unique_tag_to_hwq(utag);
 			struct ufs_hw_queue *hwq = &hba->uhq[idx];
 
 			ufs_qcom_log_str(host, "<,%x,%d,%d,%d\n",
@@ -5584,7 +5584,7 @@ static void ufs_qcom_hook_compl_command(void *param, struct ufs_hba *hba,
 			/* The dev cmd would not be logged in MCQ mode provisionally */
 			u32 utag = (rq->mq_hctx->queue_num << BLK_MQ_UNIQUE_TAG_BITS) |
 						(rq->tag & BLK_MQ_UNIQUE_TAG_MASK);
-			u32 idx = blk_mq_unique_tag_to_hwq(utag) + 1;
+			u32 idx = blk_mq_unique_tag_to_hwq(utag);
 			struct ufs_hw_queue *hwq = &hba->uhq[idx];
 
 			ufs_qcom_log_str(host, ">,%x,%d,%d,%d\n",
@@ -5837,6 +5837,28 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/**
+ * ufs_qcom_enable_vccq_shutdown - read from DTS whether vccq_shutdown
+ * should be enabled for putting additional vote on VCCQ LDO during shutdown.
+ * @hba: per adapter instance
+ */
+
+static void ufs_qcom_enable_vccq_shutdown(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int err;
+
+	err = ufs_qcom_parse_reg_info(host, "qcom,vccq-shutdown",
+			&host->vccq_shutdown);
+
+	if (host->vccq_shutdown) {
+		err = ufs_qcom_enable_vreg(hba->dev, host->vccq_shutdown);
+		if (err)
+			dev_err(hba->dev, "%s: failed enable vccq_shutdown err=%d\n",
+						__func__, err);
+	}
+}
+
 static void ufs_qcom_shutdown(struct platform_device *pdev)
 {
 	struct ufs_hba *hba;
@@ -5853,6 +5875,10 @@ static void ufs_qcom_shutdown(struct platform_device *pdev)
 	ufs_qcom_log_str(host, "0xdead\n");
 	if (host->dbg_en)
 		trace_ufs_qcom_shutdown(dev_name(hba->dev));
+
+	/* put an additional vote on UFS VCCQ LDO if required */
+	ufs_qcom_enable_vccq_shutdown(hba);
+
 	ufshcd_pltfrm_shutdown(pdev);
 
 	/* UFS_RESET TLMM register cannot reset to POR value '1' after warm

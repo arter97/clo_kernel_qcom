@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2010-2011, 2020-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2014, Sony Mobile Communications Inc.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
