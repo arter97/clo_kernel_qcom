@@ -56,7 +56,6 @@ static u64 sched_clock_last;
 static bool walt_clock_suspended;
 
 static bool use_cycle_counter;
-static DEFINE_MUTEX(cluster_lock);
 static u64 walt_load_reported_window;
 
 static struct irq_work walt_cpufreq_irq_work;
@@ -4579,6 +4578,7 @@ void fmax_uncap_checkpoint(int nr_big, u64 window_start, u32 wakeup_ctr_sum)
 	bool fmax_uncap_load_detected;
 	static u64 fmax_uncap_timestamp;
 	int i;
+	bool change = false;
 
 	fmax_uncap_load_detected = (nr_big >= 7 && wakeup_ctr_sum < WAKEUP_CTR_THRESH) ||
 			is_full_throttle_boost() ||
@@ -4590,11 +4590,19 @@ void fmax_uncap_checkpoint(int nr_big, u64 window_start, u32 wakeup_ctr_sum)
 			for (i = 0; i < num_sched_clusters; i++)
 				fmax_cap[SMART_FMAX_CAP][i] = FREQ_QOS_MAX_DEFAULT_VALUE;
 		fmax_uncap_timestamp = window_start;
-	} else if (fmax_uncap_timestamp &&
-			(window_start > fmax_uncap_timestamp + FMAX_CAP_HYSTERESIS)) {
-		for (int i = 0; i < num_sched_clusters; i++)
-			fmax_cap[SMART_FMAX_CAP][i] = sysctl_fmax_cap[i];
-		fmax_uncap_timestamp = 0;
+	} else {
+		for (int i = 0; i < num_sched_clusters; i++) {
+			if (fmax_cap[SMART_FMAX_CAP][i] != sysctl_fmax_cap[i]) {
+				change = true;
+				break;
+			}
+		}
+		if (change || (fmax_uncap_timestamp &&
+			(window_start > fmax_uncap_timestamp + FMAX_CAP_HYSTERESIS))) {
+			for (int i = 0; i < num_sched_clusters; i++)
+				fmax_cap[SMART_FMAX_CAP][i] = sysctl_fmax_cap[i];
+			fmax_uncap_timestamp = 0;
+		}
 	}
 
 	update_fmax_cap_capacities(SMART_FMAX_CAP);

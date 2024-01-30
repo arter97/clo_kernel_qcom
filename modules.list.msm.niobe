@@ -2,6 +2,9 @@
 # Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
 qcom-scm.ko
 mem_buf.ko
+cmd-db.ko
+qcom-pdc.ko
+qcom_rpmh.ko
 mem_buf_dev.ko
 msm_dma_iommu_mapping.ko
 qcom_dma_heaps.ko
@@ -11,3 +14,13 @@ clk-dummy.ko
 clk-qcom.ko
 gdsc-regulator.ko
 stub-regulator.ko
+pinctrl-msm.ko
+pinctrl-niobe.ko
+qcom_hwspinlock.ko
+smem.ko
+socinfo.ko
+qcom-ipcc.ko
+phy-qcom-ufs.ko
+phy-qcom-ufs-qrbtc-sdm845.ko
+ufs_qcom.ko
+llcc-qcom.ko
