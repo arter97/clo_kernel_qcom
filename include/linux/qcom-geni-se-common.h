@@ -208,6 +208,12 @@ struct kpi_time {
 #if IS_ENABLED(CONFIG_QCOM_GENI_SE_SSC)
 
 struct geni_se_ssc_device *get_se_ssc_dev(void);
+void geni_se_ssc_clk_enable(struct geni_se_rsc *rsc, bool enable);
+
+#else
+
+void geni_se_ssc_clk_enable(struct geni_se_rsc *rsc, bool enable)
+{ }
 
 #endif
 
