@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /dts-v1/;
@@ -143,6 +143,18 @@
 
 			codec {
 				sound-dai = <&lpass_va_macro 0>;
+			};
+		};
+
+		vi-feedback-dai-link {
+			link-name = "CODEC_DMA-LPAIF_WSA-TX-0";
+
+			cpu {
+				sound-dai = <&q6apmbedai WSA_CODEC_DMA_TX_0>;
+			};
+
+			codec {
+				sound-dai = <&swr2 6>, <&lpass_wsa_macro 2>;
 			};
 		};
 	};
@@ -648,6 +660,9 @@
 };
 
 &swr2 {
+	qcom,din-ports = <0>;
+	qcom,dout-ports = <8>;
+
 	left_spkr: speaker@0,1 {
 		compatible = "sdw10217020200";
 		reg = <0 1>;
@@ -656,6 +671,7 @@
 		sound-name-prefix = "SpkrLeft";
 		#thermal-sensor-cells = <0>;
 		vdd-supply = <&vreg_l18b_1p8>;
+		qcom,port-mapping = <1 2 3 7>;
 	};
 
 	right_spkr: speaker@0,2 {
@@ -666,6 +682,7 @@
 		sound-name-prefix = "SpkrRight";
 		#thermal-sensor-cells = <0>;
 		vdd-supply = <&vreg_l18b_1p8>;
+		qcom,port-mapping = <4 5 6 8>;
 	};
 };
 
