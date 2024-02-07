@@ -27,6 +27,8 @@ def define_autogvm():
         "drivers/firmware/qcom_scm_hab.ko",
         "drivers/i2c/busses/i2c-msm-geni.ko",
         "drivers/i2c/busses/i2c-virtio.ko",
+        "drivers/i2c/i2c-dev.ko",
+        "drivers/i2c/busses/i2c-gpio.ko",
         "drivers/iommu/arm/arm-smmu-v3/virt-arm-smmu-v3.ko",
         "drivers/iommu/arm/arm-smmu/arm_smmu.ko",
         "drivers/iommu/iommu-logger.ko",
