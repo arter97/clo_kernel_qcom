@@ -3138,10 +3138,9 @@ static void msm_hs_pm_suspend(struct device *dev)
 
 	client_count = atomic_read(&msm_uport->client_count);
 	msm_uport->pm_state = MSM_HS_PM_SUSPENDED;
-	msm_hs_resource_off(msm_uport);
+//	msm_hs_resource_off(msm_uport);
 	obs_manage_irq(msm_uport, false);
-	msm_hs_clk_bus_unvote(msm_uport);
-
+//	msm_hs_clk_bus_unvote(msm_uport);
 	/* For OBS, don't use wakeup interrupt, set gpio to suspended state */
 	if (msm_uport->obs) {
 		ret = pinctrl_select_state(msm_uport->pinctrl,
@@ -3384,7 +3383,8 @@ static int msm_hs_probe(struct platform_device *pdev)
 			bam_irqres);
 		return -ENXIO;
 	}
-	wakeup_irqres = platform_get_irq_byname(pdev, "wakeup_irq");
+//	wakeup_irqres = platform_get_irq_byname(pdev, "wakeup_irq");
+	wakeup_irqres = -1;
 	if (wakeup_irqres < 0) {
 		wakeup_irqres = -1;
 		pr_info("Wakeup irq not specified\n");
