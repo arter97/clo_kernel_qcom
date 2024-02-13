@@ -63,7 +63,7 @@ examples:
         compatible = "qcom,mem-dump";
         memory-region = <&dump_mem>;
 
-        rpmh_dump {
+        rpmh-dump {
             qcom,dump-size = <0x2000000>;
             qcom,dump-id = <0xEC>;
         };
