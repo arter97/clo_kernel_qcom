@@ -107,6 +107,22 @@ config QCOM_DCC_V2
          driver provides interface to configure DCC block and read back
          captured data from DCC's internal SRAM.
 
+config MSM_SPM
+        bool "Driver support for SPM and AVS wrapper hardware"
+        help
+          Enables the support for SPM and AVS wrapper hardware on MSMs. SPM
+          hardware is used to manage the processor power during sleep. The
+          driver allows configuring SPM to allow different low power modes for
+          both core and L2.
+
+config MSM_L2_SPM
+        bool "SPM support for L2 cache"
+        help
+          Enable SPM driver support for L2 cache. Some MSM chipsets allow
+          control of L2 cache low power mode with a Subsystem Power manager.
+          Enabling this driver allows configuring L2 SPM for low power modes
+          on supported chipsets.
+
 config QCOM_GENI_SE
 	tristate "QCOM GENI Serial Engine Driver"
 	depends on ARCH_QCOM || COMPILE_TEST
@@ -1148,6 +1164,15 @@ config QCOM_S2D_VENDOR_HOOK
 	  hibernation. Callbacks implemented here are called from the
           core kernel and help to do bootloader hibernation specific job.
 	  Enable this if bootloader hibernation is enabled.
+
+config MSM_BAM_DMUX
+	bool "BAM Data Mux Driver"
+	depends on SPS
+	help
+	  Support Muxed Data Channels over BAM interface.
+	  BAM has a limited number of pipes.  This driver
+	  provides a means to support more logical channels
+	  via muxing than BAM could without muxing.
 
 config QCOM_SECURE_HIBERNATION
 	tristate "Add security support to hibernation"
