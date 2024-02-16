@@ -358,6 +358,54 @@ int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 	return 0;
 }
 
+__read_mostly unsigned int sched_pelt_lshift;
+static unsigned int sched_pelt_multiplier = 1;
+
+static int set_sched_pelt_multiplier(const char *val, const struct kernel_param *kp)
+{
+	int ret;
+
+	ret = param_set_int(val, kp);
+	if (ret)
+		goto error;
+
+	switch (sched_pelt_multiplier)  {
+	case 1:
+		fallthrough;
+	case 2:
+		fallthrough;
+	case 4:
+		WRITE_ONCE(sched_pelt_lshift,
+			   sched_pelt_multiplier >> 1);
+		break;
+	default:
+		ret = -EINVAL;
+		goto error;
+	}
+
+	return 0;
+
+error:
+	sched_pelt_multiplier = 1;
+	return ret;
+}
+
+static const struct kernel_param_ops sched_pelt_multiplier_ops = {
+	.set = set_sched_pelt_multiplier,
+	.get = param_get_int,
+};
+
+#ifdef MODULE_PARAM_PREFIX
+#undef MODULE_PARAM_PREFIX
+#endif
+/* XXX: should we use sched as prefix? */
+#define MODULE_PARAM_PREFIX "kernel."
+module_param_cb(sched_pelt_multiplier, &sched_pelt_multiplier_ops, &sched_pelt_multiplier, 0444);
+MODULE_PARM_DESC(sched_pelt_multiplier, "PELT HALFLIFE helps control the responsiveness of the system.");
+MODULE_PARM_DESC(sched_pelt_multiplier, "Accepted value: 1 32ms PELT HALIFE - roughly 200ms to go from 0 to max performance point (default).");
+MODULE_PARM_DESC(sched_pelt_multiplier, "                2 16ms PELT HALIFE - roughly 100ms to go from 0 to max performance point.");
+MODULE_PARM_DESC(sched_pelt_multiplier, "                4  8ms PELT HALIFE - roughly  50ms to go from 0 to max performance point.");
+
 /*
  * dl_rq:
  *
@@ -466,64 +514,4 @@ int update_irq_load_avg(struct rq *rq, u64 running)
 
 	return ret;
 }
-#endif
-
-__read_mostly unsigned int sched_pelt_lshift;
-
-#ifdef CONFIG_SYSCTL
-static unsigned int sysctl_sched_pelt_multiplier = 1;
-
-int sched_pelt_multiplier(struct ctl_table *table, int write, void *buffer,
-			  size_t *lenp, loff_t *ppos)
-{
-	static DEFINE_MUTEX(mutex);
-	unsigned int old;
-	int ret;
-
-	mutex_lock(&mutex);
-	old = sysctl_sched_pelt_multiplier;
-	ret = proc_dointvec(table, write, buffer, lenp, ppos);
-	if (ret)
-		goto undo;
-	if (!write)
-		goto done;
-
-	switch (sysctl_sched_pelt_multiplier)  {
-	case 1:
-		fallthrough;
-	case 2:
-		fallthrough;
-	case 4:
-		WRITE_ONCE(sched_pelt_lshift,
-			   sysctl_sched_pelt_multiplier >> 1);
-		goto done;
-	default:
-		ret = -EINVAL;
-	}
-
-undo:
-	sysctl_sched_pelt_multiplier = old;
-done:
-	mutex_unlock(&mutex);
-
-	return ret;
-}
-
-static struct ctl_table sched_pelt_sysctls[] = {
-	{
-		.procname       = "sched_pelt_multiplier",
-		.data           = &sysctl_sched_pelt_multiplier,
-		.maxlen         = sizeof(unsigned int),
-		.mode           = 0644,
-		.proc_handler   = sched_pelt_multiplier,
-	},
-	{}
-};
-
-static int __init sched_pelt_sysctl_init(void)
-{
-	register_sysctl_init("kernel", sched_pelt_sysctls);
-	return 0;
-}
-late_initcall(sched_pelt_sysctl_init);
 #endif
