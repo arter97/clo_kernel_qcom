@@ -2,6 +2,8 @@
 /* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * Description: CoreSight Trace Memory Controller driver
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -26,6 +28,7 @@
 
 #include "coresight-priv.h"
 #include "coresight-tmc.h"
+#include "coresight-common.h"
 
 DEFINE_CORESIGHT_DEVLIST(etb_devs, "tmc_etb");
 DEFINE_CORESIGHT_DEVLIST(etf_devs, "tmc_etf");
@@ -329,9 +332,51 @@ static ssize_t buffer_size_store(struct device *dev,
 
 static DEVICE_ATTR_RW(buffer_size);
 
+static ssize_t block_size_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	struct tmc_drvdata *drvdata = dev_get_drvdata(dev->parent);
+	uint32_t val = 0;
+
+	if (drvdata->byte_cntr)
+		val = drvdata->byte_cntr->block_size;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			val);
+}
+
+static ssize_t block_size_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf,
+			      size_t size)
+{
+	struct tmc_drvdata *drvdata = dev_get_drvdata(dev->parent);
+	unsigned long val;
+
+	if (kstrtoul(buf, 0, &val))
+		return -EINVAL;
+
+	if (!drvdata->byte_cntr)
+		return -EINVAL;
+
+	if (val && val < 4096) {
+		pr_err("Assign minimum block size of 4096 bytes\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&drvdata->byte_cntr->byte_cntr_lock);
+	drvdata->byte_cntr->block_size = val;
+	mutex_unlock(&drvdata->byte_cntr->byte_cntr_lock);
+
+	return size;
+}
+static DEVICE_ATTR_RW(block_size);
+
 static struct attribute *coresight_tmc_attrs[] = {
 	&dev_attr_trigger_cntr.attr,
 	&dev_attr_buffer_size.attr,
+	&dev_attr_block_size.attr,
 	NULL,
 };
 
@@ -473,6 +518,17 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 		drvdata->size = readl_relaxed(drvdata->base + TMC_RSZ) * 4;
 	}
 
+	ret = of_get_coresight_csr_name(adev->dev.of_node, &drvdata->csr_name);
+	if (ret)
+		dev_info(dev, "No csr data\n");
+	else {
+		drvdata->csr = coresight_csr_get(drvdata->csr_name);
+		if (IS_ERR(drvdata->csr)) {
+			dev_info(dev, "failed to get csr, defer probe\n");
+			return -EPROBE_DEFER;
+		}
+	}
+
 	desc.dev = dev;
 	desc.groups = coresight_tmc_groups;
 
@@ -494,6 +550,8 @@ static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
 		idr_init(&drvdata->idr);
 		mutex_init(&drvdata->idr_mutex);
 		dev_list = &etr_devs;
+
+		drvdata->byte_cntr = byte_cntr_init(adev, drvdata);
 		break;
 	case TMC_CONFIG_TYPE_ETF:
 		desc.type = CORESIGHT_DEV_TYPE_LINKSINK;
@@ -571,6 +629,11 @@ static void tmc_remove(struct amba_device *adev)
 	 * etb fops in this case, device is there until last file
 	 * handler to this device is closed.
 	 */
+
+	if (drvdata->config_type == TMC_CONFIG_TYPE_ETR
+			&& drvdata->byte_cntr)
+		byte_cntr_remove(drvdata->byte_cntr);
+
 	misc_deregister(&drvdata->miscdev);
 	coresight_unregister(drvdata->csdev);
 }
