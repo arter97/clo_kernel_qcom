@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "smcinvoke: %s: " fmt, __func__
@@ -17,14 +17,13 @@
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
 #include <linux/dma-buf.h>
-#include <linux/dma-heap.h>
 #include <linux/delay.h>
 #include <linux/kref.h>
 #include <linux/signal.h>
-//#include <linux/mem-buf.h>
+#include <linux/mem-buf.h>
 #include <linux/of_platform.h>
-#include <linux/of_reserved_mem.h>
 #include <linux/firmware.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/firmware/qcom/qcom_scm_addon.h>
 #include <linux/freezer.h>
 #include <linux/ratelimit.h>
@@ -187,14 +186,6 @@ enum worker_thread_type {
 	ADCI_WORKER_THREAD,
 	MAX_THREAD_NUMBER
 };
-
-enum cma_heap {
-	QCOM_QSEECOM = 0,
-	QCOM_QSEECOM_TA,
-	QCOM_QSEECOM_MAX
-};
-
-char *cma_heap_arr[] = {"qcom,qseecom", "qcom,qseecom-ta"};
 
 static DEFINE_HASHTABLE(g_cb_servers, 8);
 static LIST_HEAD(g_mem_objs);
@@ -1144,34 +1135,26 @@ static bool is_remote_obj(int32_t uhandle, struct smcinvoke_file_data **tzobj,
 static int smcinvoke_create_bridge(struct smcinvoke_mem_obj *mem_obj)
 {
 	int ret = 0;
-	int tz_perm = PERM_READ|PERM_WRITE;
-	/*
-	 * Add hardcoded mem-buf API values. Keep READ/WRITE perm for HLOS.
-	 * TODO: Remove later.
-	 */
-	uint32_t s_vmid_list[] = { VMID_HLOS };
-	uint32_t s_perms_list[] = { PERM_READ | PERM_WRITE };
-	uint32_t *vmid_list = &s_vmid_list[0];
-	uint32_t *perms_list = &s_perms_list[0];
-	uint32_t nelems = 1;
-
-	//struct dma_buf *dmabuf = mem_obj->dma_buf;
+	int tz_perm = QCOM_SCM_PERM_RW;
+	uint32_t *vmid_list;
+	uint32_t *perms_list;
+	uint32_t nelems = 0;
+	struct dma_buf *dmabuf = mem_obj->dma_buf;
 	phys_addr_t phys = mem_obj->p_addr;
 	size_t size = mem_obj->p_addr_len;
 
 	if (!qtee_shmbridge_is_enabled())
 		return 0;
 
-//	ret = mem_buf_dma_buf_copy_vmperm(dmabuf, (int **)&vmid_list,
-//			(int **)&perms_list, (int *)&nelems);
-//	if (ret) {
-//		pr_err("mem_buf_dma_buf_copy_vmperm failure, err=%d\n", ret);
-//		return ret;
-//	}
-//
-//	if (mem_buf_dma_buf_exclusive_owner(dmabuf))
-//		perms_list[0] = PERM_READ | PERM_WRITE;
-//
+	ret = mem_buf_dma_buf_copy_vmperm(dmabuf, (int **)&vmid_list,
+			(int **)&perms_list, (int *)&nelems);
+	if (ret) {
+		pr_err("mem_buf_dma_buf_copy_vmperm failure, err=%d\n", ret);
+		return ret;
+	}
+
+	if (mem_buf_dma_buf_exclusive_owner(dmabuf))
+		perms_list[0] = QCOM_SCM_PERM_RW;
 
 	ret = qtee_shmbridge_register(phys, size, vmid_list, perms_list, nelems,
 			tz_perm, &mem_obj->shmbridge_handle);
@@ -1184,8 +1167,8 @@ static int smcinvoke_create_bridge(struct smcinvoke_mem_obj *mem_obj)
 
 	trace_smcinvoke_create_bridge(mem_obj->shmbridge_handle, mem_obj->mem_region_id);
 exit:
-//	kfree(perms_list);
-//	kfree(vmid_list);
+	kfree(perms_list);
+	kfree(vmid_list);
 	return ret;
 }
 
@@ -3053,32 +3036,6 @@ int process_invoke_request_from_kernel_client(int fd,
 	return ret;
 }
 
-static int smci_alloc_cma_heap(struct device *dev)
-{
-	int cma_heap_type = 0;
-	int rc = 0;
-
-	for (cma_heap_type = QCOM_QSEECOM; cma_heap_type < QCOM_QSEECOM_MAX; cma_heap_type++) {
-		rc = of_reserved_mem_device_init_by_idx(dev, dev->of_node, cma_heap_type);
-		if (rc) {
-			pr_err("%s: No reserved DMA memory, ret=%d\n",
-					cma_heap_arr[cma_heap_type], rc);
-			rc = -EINVAL;
-			goto err;
-		}
-
-		rc = cma_heap_add(dev->cma_area, NULL);
-		if (rc) {
-			pr_err("%s: cma_heap_add failed, ret=%d\n",
-					cma_heap_arr[cma_heap_type], rc);
-			rc = -EINVAL;
-			goto err;
-		}
-	}
-err:
-	return rc;
-}
-
 static int smcinvoke_open(struct inode *nodp, struct file *filp)
 {
 	struct smcinvoke_file_data *tzcxt = NULL;
@@ -3206,25 +3163,16 @@ static int smcinvoke_release(struct inode *nodp, struct file *filp)
 
 static int smcinvoke_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
 	unsigned int baseminor = 0;
 	unsigned int count = 1;
 	int rc = 0;
 
-	/* Create CMA heaps for smcinvoke clients */
-	rc = smci_alloc_cma_heap(dev);
-	if (rc) {
-		pr_err("CMA heap allocation failed, ret: %d\n", rc);
-		return rc;
-	}
-
-	rc = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc) {
 		pr_err("dma_set_mask_and_coherent failed %d\n", rc);
 		return rc;
 	}
-
-	legacy_smc_call = of_property_read_bool(dev->of_node,
+	legacy_smc_call = of_property_read_bool((&pdev->dev)->of_node,
 			"qcom,support-legacy_smc");
 	invoke_cmd = legacy_smc_call ? SMCINVOKE_INVOKE_CMD_LEGACY : SMCINVOKE_INVOKE_CMD;
 

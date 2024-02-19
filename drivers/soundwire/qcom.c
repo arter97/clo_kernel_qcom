@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2019, Linaro Limited
+// Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/clk.h>
 #include <linux/completion.h>
@@ -155,6 +156,7 @@ struct qcom_swrm_port_config {
 	u8 word_length;
 	u8 blk_group_count;
 	u8 lane_control;
+	u8 chan_mask;
 };
 
 /*
@@ -1025,7 +1027,13 @@ static int qcom_swrm_port_enable(struct sdw_bus *bus,
 {
 	u32 reg = SWRM_DP_PORT_CTRL_BANK(enable_ch->port_num, bank);
 	struct qcom_swrm_ctrl *ctrl = to_qcom_sdw(bus);
+	struct qcom_swrm_port_config *pcfg;
 	u32 val;
+
+	pcfg = &ctrl->pconfig[enable_ch->port_num];
+
+	if (pcfg->chan_mask != SWR_INVALID_PARAM && pcfg->chan_mask != 0)
+		enable_ch->ch_mask = pcfg->chan_mask;
 
 	ctrl->reg_read(ctrl, reg, &val);
 
@@ -1347,7 +1355,7 @@ static int qcom_swrm_register_dais(struct qcom_swrm_ctrl *ctrl)
 
 		stream->channels_min = 1;
 		stream->channels_max = 1;
-		stream->rates = SNDRV_PCM_RATE_48000;
+		stream->rates = SNDRV_PCM_RATE_8000_192000;
 		stream->formats = SNDRV_PCM_FMTBIT_S16_LE;
 
 		dais[i].ops = &qcom_swrm_pdm_dai_ops;
@@ -1371,29 +1379,20 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 	u8 word_length[QCOM_SDW_MAX_PORTS];
 	u8 blk_group_count[QCOM_SDW_MAX_PORTS];
 	u8 lane_control[QCOM_SDW_MAX_PORTS];
+	u8 chan_mask[QCOM_SDW_MAX_PORTS];
 	int i, ret, nports, val;
 	bool si_16 = false;
 
-	ctrl->reg_read(ctrl, SWRM_COMP_PARAMS, &val);
-
-	ctrl->num_dout_ports = FIELD_GET(SWRM_COMP_PARAMS_DOUT_PORTS_MASK, val);
-	ctrl->num_din_ports = FIELD_GET(SWRM_COMP_PARAMS_DIN_PORTS_MASK, val);
 
 	ret = of_property_read_u32(np, "qcom,din-ports", &val);
 	if (ret)
 		return ret;
-
-	if (val > ctrl->num_din_ports)
-		return -EINVAL;
 
 	ctrl->num_din_ports = val;
 
 	ret = of_property_read_u32(np, "qcom,dout-ports", &val);
 	if (ret)
 		return ret;
-
-	if (val > ctrl->num_dout_ports)
-		return -EINVAL;
 
 	ctrl->num_dout_ports = val;
 
@@ -1449,6 +1448,9 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 	memset(lane_control, SWR_INVALID_PARAM, QCOM_SDW_MAX_PORTS);
 	of_property_read_u8_array(np, "qcom,ports-lane-control", lane_control, nports);
 
+	memset(chan_mask, SWR_INVALID_PARAM, QCOM_SDW_MAX_PORTS);
+	of_property_read_u8_array(np, "qcom,ports-chmask", chan_mask, nports);
+
 	for (i = 0; i < nports; i++) {
 		/* Valid port number range is from 1-14 */
 		if (si_16)
@@ -1463,6 +1465,7 @@ static int qcom_swrm_get_port_config(struct qcom_swrm_ctrl *ctrl)
 		ctrl->pconfig[i + 1].word_length = word_length[i];
 		ctrl->pconfig[i + 1].blk_group_count = blk_group_count[i];
 		ctrl->pconfig[i + 1].lane_control = lane_control[i];
+		ctrl->pconfig[i + 1].chan_mask = chan_mask[i];
 	}
 
 	return 0;

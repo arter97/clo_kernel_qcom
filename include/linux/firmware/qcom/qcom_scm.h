@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2010-2015, 2018-2019 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __QCOM_SCM_H
 #define __QCOM_SCM_H
@@ -53,11 +54,47 @@ enum qcom_scm_ice_cipher {
 	QCOM_SCM_ICE_CIPHER_AES_256_CBC = 4,
 };
 
+struct qcom_scm_current_perm_info {
+	__le32 vmid;
+	__le32 perm;
+	__le64 ctx;
+	__le32 ctx_size;
+	__le32 unused;
+};
+
+struct qcom_scm_mem_map_info {
+	__le64 mem_addr;
+	__le64 mem_size;
+};
+
 #define QCOM_SCM_PERM_READ       0x4
 #define QCOM_SCM_PERM_WRITE      0x2
 #define QCOM_SCM_PERM_EXEC       0x1
 #define QCOM_SCM_PERM_RW (QCOM_SCM_PERM_READ | QCOM_SCM_PERM_WRITE)
 #define QCOM_SCM_PERM_RWX (QCOM_SCM_PERM_RW | QCOM_SCM_PERM_EXEC)
+
+static inline void qcom_scm_populate_vmperm_info(
+		struct qcom_scm_current_perm_info *destvm, int vmid, int perm)
+{
+	if (!destvm)
+		return;
+
+	destvm->vmid = cpu_to_le32(vmid);
+	destvm->perm = cpu_to_le32(perm);
+	destvm->ctx = 0;
+	destvm->ctx_size = 0;
+}
+
+static inline void qcom_scm_populate_mem_map_info(
+		struct qcom_scm_mem_map_info *mem_to_map,
+		phys_addr_t mem_addr, size_t mem_size)
+{
+	if (!mem_to_map)
+		return;
+
+	mem_to_map->mem_addr = cpu_to_le64(mem_addr);
+	mem_to_map->mem_size = cpu_to_le64(mem_size);
+}
 
 extern bool qcom_scm_is_available(void);
 
@@ -93,6 +130,11 @@ extern int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size);
 extern int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
 					  u32 cp_nonpixel_start,
 					  u32 cp_nonpixel_size);
+extern int
+qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
+		size_t mem_regions_sz, u32 *srcvms, size_t src_sz,
+		struct qcom_scm_current_perm_info *newvms,
+		size_t newvms_sz);
 extern int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
 			       u64 *src,
 			       const struct qcom_scm_vmperm *newvm,

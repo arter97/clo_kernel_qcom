@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <dt-bindings/clock/qcom,sm8550-gcc.h>
@@ -421,7 +421,7 @@ static struct plat_inst_cap instance_cap_data_sm8550[] = {
 		V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
 		BIT(V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE) |
 		BIT(V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME),
-		V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE,
+		V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
 		V4L2_CID_MPEG_VIDEO_HEADER_MODE,
 		HFI_PROP_SEQ_HEADER_MODE,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU,
@@ -475,7 +475,7 @@ static struct plat_inst_cap instance_cap_data_sm8550[] = {
 		 B_FRAME_QP, ENH_LAYER_COUNT, BIT_RATE,
 		 MIN_QUALITY, PEAK_BITRATE, SLICE_MODE},
 		adjust_bitrate_mode,
-		set_u32_enum},
+		set_bitrate_mode},
 
 	{FRAME_SKIP_MODE, ENC, H264 | HEVC,
 		V4L2_MPEG_VIDEO_FRAME_SKIP_MODE_DISABLED,
@@ -973,6 +973,16 @@ static struct plat_inst_cap instance_cap_data_sm8550[] = {
 		adjust_output_order,
 		set_u32},
 
+	{INPUT_BUF_HOST_MAX_COUNT, ENC | DEC, CODECS_ALL,
+		DEFAULT_MAX_HOST_BUF_COUNT, DEFAULT_MAX_HOST_BURST_BUF_COUNT,
+		1, DEFAULT_MAX_HOST_BUF_COUNT,
+		0,
+		HFI_PROP_BUFFER_HOST_MAX_COUNT,
+		CAP_FLAG_INPUT_PORT,
+		{0},
+		NULL,
+		set_u32},
+
 	{STAGE, ENC | DEC, CODECS_ALL,
 		STAGE_1,
 		STAGE_2, 1,
@@ -1147,7 +1157,7 @@ struct platform_data sm8550_data = {
 
 	.reg_prst_tbl = sm8550_reg_preset_table,
 	.reg_prst_tbl_size = ARRAY_SIZE(sm8550_reg_preset_table),
-	.fwname = "vpu30_4v",
+	.fwname = "qcom/vpu-3.0/vpu30_4v",
 	.pas_id = 9,
 
 	.core_data = core_data_sm8550,

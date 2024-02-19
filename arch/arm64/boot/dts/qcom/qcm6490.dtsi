@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <dt-bindings/soc/qcom,gpr.h>
@@ -117,6 +117,17 @@
 			<GCC_WPSS_AHB_BDG_MST_CLK>, <GCC_WPSS_RSCP_CLK>;
 };
 
+&ipa {
+	qcom,gsi-loader = "self";
+	memory-region = <&ipa_fw_mem>;
+	firmware-name = "qcom/qcm6490/ipa_fws.mdt";
+	status = "okay";
+};
+
+&ipa_fw_mem {
+	reg = <0x0 0x8b300000 0x0 0x10000>;
+};
+
 &lpass_audiocc {
 	qcom,adsp-skip-pll;
 	protected-clocks = <LPASS_AUDIO_CC_CDIV_RX_MCLK_DIV_CLK_SRC>,
@@ -149,10 +160,14 @@
 	/delete-property/ power-domain-names;
 	clocks = <&q6prmcc LPASS_CLK_ID_TX_CORE_MCLK LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&q6prmcc LPASS_CLK_ID_TX_CORE_NPL_MCLK  LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+		 <&q6prmcc LPASS_CLK_ID_RX_CORE_MCLK  LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+		 <&q6prmcc LPASS_CLK_ID_RX_CORE_NPL_MCLK  LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&lpass_va_macro>;
-	clock-names = "mclk", "npl", "macro", "dcodec", "fsgen";
+	clock-names = "mclk", "npl", "rx-mclk", "rx-npl", "macro", "dcodec", "fsgen";
+
+	qcom,rx_mclk_mode_muxsel = <0x033240D8>;
 
 	status = "okay";
 };
@@ -161,6 +176,16 @@
 	clocks = <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
 		 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
 	clock-names = "core", "audio";
+
+	lpass_dmic45_clk: dmic45-clk-state {
+		pins = "gpio12";
+		function = "dmic3_clk";
+	};
+
+	lpass_dmic45_data: dmic45-data-state {
+		pins = "gpio13";
+		function = "dmic3_data";
+	};
 };
 
 &lpass_tx_macro {
@@ -186,7 +211,8 @@
 
 	pinctrl-names = "default";
 	pinctrl-0 = <&lpass_dmic01_clk>, <&lpass_dmic01_data>,
-		    <&lpass_dmic23_clk>, <&lpass_dmic23_data>;
+		    <&lpass_dmic23_clk>, <&lpass_dmic23_data>,
+		    <&lpass_dmic45_clk>, <&lpass_dmic45_data>;
 
 	status = "okay";
 };
@@ -485,10 +511,6 @@
 
 &swr2 {
 	status = "okay";
-};
-
-&ipa_fw_mem {
-	reg = <0x0 0x8b300000 0x0 0x10000>;
 };
 
 &tlmm {

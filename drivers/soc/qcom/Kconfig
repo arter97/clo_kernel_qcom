@@ -78,6 +78,14 @@ config QCOM_MDT_LOADER
 	tristate
 	select QCOM_SCM
 
+config QCOM_MEMORY_DUMP_V2
+	tristate "QCOM Memory Dump V2 Support"
+	help
+	  This enables memory dump feature. It allows various client
+	  subsystems to register respective dump regions. At the time
+	  of deadlocks or cpu hangs these dump regions are captured to
+	  give a snapshot of the system at the time of the crash.
+
 config QCOM_OCMEM
 	tristate "Qualcomm On Chip Memory (OCMEM) driver"
 	depends on ARCH_QCOM
@@ -88,10 +96,32 @@ config QCOM_OCMEM
 	  requirements. This is typically used by the GPU, camera/video, and
 	  audio components on some Snapdragon SoCs.
 
+config QCOM_PANEL_EVENT_NOTIFIER
+        tristate "panel event notifier"
+        depends on DRM
+        help
+          Enabling this option adds panel event notifier driver.
+          This driver is responsible for notifying clients interested in display
+          panel events such as panel on , panel off, fps change etc.  Clients
+          can use these notifications for power saving or align its operations
+          with display panel power state.
+
 config QCOM_PDR_HELPERS
 	tristate
 	select QCOM_QMI_HELPERS
 	depends on NET
+
+config QCOM_PMIC_PDCHARGER_ULOG
+	tristate "Qualcomm PMIC PDCharger ULOG driver"
+	depends on RPMSG
+	depends on EVENT_TRACING
+	help
+	  The Qualcomm PMIC PDCharger ULOG driver provides access to logs of
+	  the ADSP firmware PDCharger module in charge of Battery and Power
+	  Delivery on modern systems.
+
+	  Say yes here to support PDCharger ULOG event tracing on modern
+	  Qualcomm platforms.
 
 config QCOM_PMIC_GLINK
 	tristate "Qualcomm PMIC GLINK driver"
@@ -225,6 +255,16 @@ config QCOM_SMSM
 	  Say yes here to support the Qualcomm Shared Memory State Machine.
 	  The state machine is represented by bits in shared memory.
 
+config QCOM_SMP2P_SLEEPSTATE
+	tristate "SMP2P Sleepstate notifier"
+	depends on QCOM_SMP2P
+	help
+	  When this option is enabled, notifications are sent to remote procs
+	  for the power state changes on the local processor. The notifications
+	  are sent through the smp2p framework. This driver can also receive
+	  notifications from the remote to prevent suspend on the local
+	  processor.
+
 config QCOM_SOCINFO
 	tristate "Qualcomm socinfo driver"
 	depends on QCOM_SMEM
@@ -349,6 +389,22 @@ config QCOM_WATCHDOG_IPI_PING
          This boolean flag gives the watchdog driver the ability to send a
          keep-alive ping to other cpu's if it is set to 1. Otherwise, when
          it is set to 0 no keep alive pings will be sent.
+
+config QCOM_SOC_DEBUG
+       depends on RANDOMIZE_BASE
+       tristate "SOC Debug Module"
+       help
+	 This module will write kaslr address to imem to enable debug of
+	 crashes which require loading of vmlinux and ramdumps.
+
+config QCOM_SECURE_BUFFER
+	tristate "Helper functions for secure buffers through TZ"
+	depends on QCOM_SCM
+	help
+	 Enable for targets that need to call into TZ to secure
+	 memory buffers. This ensures that only the correct clients can
+	 use this memory and no unauthorized access is made to the
+	 buffer.
 
 source "drivers/soc/qcom/mem_buf/Kconfig"
 source "drivers/soc/qcom/smcinvoke/Kconfig"

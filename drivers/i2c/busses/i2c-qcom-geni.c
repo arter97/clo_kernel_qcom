@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+// Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/acpi.h>
 #include <linux/clk.h>
@@ -99,6 +100,7 @@ struct geni_i2c_dev {
 	struct dma_chan *rx_c;
 	bool gpi_mode;
 	bool abort_done;
+	bool is_shared;
 };
 
 struct geni_i2c_desc {
@@ -484,9 +486,16 @@ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
 
 static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
 {
-	struct geni_i2c_dev *gi2c = cb;
+	struct gpi_i2c_config *i2c = cb;
+	struct geni_i2c_dev *gi2c = i2c->gi2c;
 
-	if (result->result != DMA_TRANS_NOERROR) {
+	if (i2c->status & (BIT(NACK) << 5)) {
+		geni_i2c_err(gi2c, NACK);
+	} else if (i2c->status & (BIT(BUS_PROTO) << 5)) {
+		geni_i2c_err(gi2c, BUS_PROTO);
+	} else if (i2c->status & (BIT(ARB_LOST) << 5)) {
+		geni_i2c_err(gi2c, ARB_LOST);
+	} else if (result->result != DMA_TRANS_NOERROR) {
 		dev_err(gi2c->se.dev, "DMA txn failed:%d\n", result->result);
 		gi2c->err = -EIO;
 	} else if (result->residue) {
@@ -568,7 +577,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
 	}
 
 	desc->callback_result = i2c_gpi_cb_result;
-	desc->callback_param = gi2c;
+	desc->callback_param = peripheral;
 
 	dmaengine_submit(desc);
 	*buf = dma_buf;
@@ -585,33 +594,48 @@ err_config:
 static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], int num)
 {
 	struct dma_slave_config config = {};
-	struct gpi_i2c_config peripheral = {};
+	struct gpi_i2c_config *peripheral;
 	int i, ret = 0, timeout;
 	dma_addr_t tx_addr, rx_addr;
 	void *tx_buf = NULL, *rx_buf = NULL;
 	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
 
-	config.peripheral_config = &peripheral;
-	config.peripheral_size = sizeof(peripheral);
+	peripheral = devm_kzalloc(gi2c->se.dev, sizeof(*peripheral), GFP_KERNEL);
+	if (!peripheral)
+		return -ENOMEM;
 
-	peripheral.pack_enable = I2C_PACK_TX | I2C_PACK_RX;
-	peripheral.cycle_count = itr->t_cycle_cnt;
-	peripheral.high_count = itr->t_high_cnt;
-	peripheral.low_count = itr->t_low_cnt;
-	peripheral.clk_div = itr->clk_div;
-	peripheral.set_config = 1;
-	peripheral.multi_msg = false;
+	config.peripheral_config = peripheral;
+	config.peripheral_size = sizeof(struct gpi_i2c_config);
+
+	peripheral->pack_enable = I2C_PACK_TX | I2C_PACK_RX;
+	peripheral->cycle_count = itr->t_cycle_cnt;
+	peripheral->high_count = itr->t_high_cnt;
+	peripheral->low_count = itr->t_low_cnt;
+	peripheral->clk_div = itr->clk_div;
+	peripheral->set_config = 1;
+	peripheral->multi_msg = false;
+	peripheral->gi2c = gi2c;
+
+	if (gi2c->is_shared)
+		peripheral->shared_se = true;
 
 	for (i = 0; i < num; i++) {
 		gi2c->cur = &msgs[i];
 		gi2c->err = 0;
 		dev_dbg(gi2c->se.dev, "msg[%d].len:%d\n", i, gi2c->cur->len);
 
-		peripheral.stretch = 0;
+		peripheral->first_msg = (i == 0) ? 1 : 0;
+		peripheral->last_msg = (i == num - 1) ? 1 : 0;
+		peripheral->stretch = 0;
 		if (i < num - 1)
-			peripheral.stretch = 1;
+			peripheral->stretch = 1;
 
-		peripheral.addr = msgs[i].addr;
+		peripheral->addr = msgs[i].addr;
+
+		ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
+				    &tx_addr, &tx_buf, I2C_WRITE, gi2c->tx_c);
+		if (ret)
+			goto err;
 
 		if (msgs[i].flags & I2C_M_RD) {
 			ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
@@ -619,11 +643,6 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
 			if (ret)
 				goto err;
 		}
-
-		ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
-				    &tx_addr, &tx_buf, I2C_WRITE, gi2c->tx_c);
-		if (ret)
-			goto err;
 
 		if (msgs[i].flags & I2C_M_RD)
 			dma_async_issue_pending(gi2c->rx_c);
@@ -857,6 +876,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	ret = geni_se_resources_on(&gi2c->se);
 	if (ret) {
 		dev_err(dev, "Error turning on resources %d\n", ret);
+		clk_disable_unprepare(gi2c->core_clk);
 		return ret;
 	}
 	proto = geni_se_read_proto(&gi2c->se);
@@ -876,8 +896,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		/* FIFO is disabled, so we can only use GPI DMA */
 		gi2c->gpi_mode = true;
 		ret = setup_gpi_dma(gi2c);
-		if (ret)
+		if (ret) {
+			geni_se_resources_off(&gi2c->se);
+			clk_disable_unprepare(gi2c->core_clk);
 			return dev_err_probe(dev, ret, "Failed to setup GPI DMA mode\n");
+		}
 
 		dev_dbg(dev, "Using GPI DMA mode for I2C\n");
 	} else {
@@ -890,6 +913,8 @@ static int geni_i2c_probe(struct platform_device *pdev)
 
 		if (!tx_depth) {
 			dev_err(dev, "Invalid TX FIFO depth\n");
+			geni_se_resources_off(&gi2c->se);
+			clk_disable_unprepare(gi2c->core_clk);
 			return -EINVAL;
 		}
 
@@ -899,6 +924,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 				       PACKING_BYTES_PW, true, true, true);
 
 		dev_dbg(dev, "i2c fifo/se-dma mode. fifo depth:%d\n", tx_depth);
+	}
+
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,shared-se")) {
+		gi2c->is_shared = true;
+		dev_info(&pdev->dev, "Multi-EE usecase with shared SE\n");
 	}
 
 	clk_disable_unprepare(gi2c->core_clk);
@@ -957,14 +987,17 @@ static int __maybe_unused geni_i2c_runtime_suspend(struct device *dev)
 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
 
 	disable_irq(gi2c->irq);
-	ret = geni_se_resources_off(&gi2c->se);
-	if (ret) {
-		enable_irq(gi2c->irq);
-		return ret;
 
+	if (gi2c->is_shared) {
+		geni_se_clks_off(&gi2c->se);
 	} else {
-		gi2c->suspended = 1;
+		ret = geni_se_resources_off(&gi2c->se);
+		if (ret) {
+			enable_irq(gi2c->irq);
+			return ret;
+		}
 	}
+	gi2c->suspended = 1;
 
 	clk_disable_unprepare(gi2c->core_clk);
 

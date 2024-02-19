@@ -29,11 +29,11 @@ properties:
 
   clocks:
     minItems: 3
-    maxItems: 5
+    maxItems: 7
 
   clock-names:
     minItems: 3
-    maxItems: 5
+    maxItems: 7
 
   clock-output-names:
     maxItems: 1
@@ -45,6 +45,9 @@ properties:
     items:
       - const: macro
       - const: dcodec
+
+  qcom,rx_mclk_mode_muxsel:
+    maxItems: 1
 
 required:
   - compatible

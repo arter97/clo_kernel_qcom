@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/input.h>
 #include <linux/module.h>
@@ -19,6 +19,10 @@
 #include "sdw.h"
 
 #define DRIVER_NAME		"qcm6490"
+#define TDM_SLOTS_PER_FRAME	8
+#define TDM_SLOT_WIDTH		16
+#define WCN_CDC_SLIM_RX_CH_MAX	2
+#define WCN_CDC_SLIM_TX_CH_MAX	2
 
 struct qcm6490_snd_data {
 	bool stream_prepared[AFE_PORT_MAX];
@@ -27,6 +31,19 @@ struct qcm6490_snd_data {
 	struct snd_soc_jack jack;
 	bool jack_setup;
 };
+
+static int qcm6490_slim_dai_init(struct snd_soc_pcm_runtime *rtd)
+{
+	int ret = 0;
+	unsigned int rx_ch[WCN_CDC_SLIM_RX_CH_MAX] = {157, 158};
+	unsigned int tx_ch[WCN_CDC_SLIM_TX_CH_MAX]  = {159, 160};
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+
+	ret = snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
+		tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
+
+	return ret;
+}
 
 static int qcm6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 {
@@ -40,11 +57,15 @@ static int qcm6490_snd_init(struct snd_soc_pcm_runtime *rtd)
 		return qcom_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
 	case VA_CODEC_DMA_TX_0:
 	case WSA_CODEC_DMA_RX_0:
+	case WSA_CODEC_DMA_TX_0:
 	case PRIMARY_MI2S_RX:
 	case PRIMARY_MI2S_TX:
 	case PRIMARY_TDM_RX_0:
 	case PRIMARY_TDM_TX_0:
 		return 0;
+	case SLIMBUS_0_RX:
+	case SLIMBUS_0_TX:
+		return qcm6490_slim_dai_init(rtd);
 	default:
 		dev_err(rtd->dev, "%s: invalid dai id 0x%x\n", __func__, cpu_dai->id);
 	}
@@ -85,23 +106,6 @@ static int qcm6490_snd_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct qcm6490_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
 
-	switch (cpu_dai->id) {
-	case PRIMARY_MI2S_RX:
-		snd_soc_dai_set_sysclk(cpu_dai, Q6PRM_LPASS_CLK_ID_PRI_MI2S_IBIT, 19200000, 0);
-		break;
-	case PRIMARY_MI2S_TX:
-		snd_soc_dai_set_sysclk(cpu_dai, Q6PRM_LPASS_CLK_ID_PRI_MI2S_IBIT, 19200000, 0);
-		break;
-	case PRIMARY_TDM_RX_0:
-		snd_soc_dai_set_sysclk(cpu_dai, Q6PRM_LPASS_CLK_ID_PRI_TDM_IBIT, 19200000, 0);
-		break;
-	case PRIMARY_TDM_TX_0:
-		snd_soc_dai_set_sysclk(cpu_dai, Q6PRM_LPASS_CLK_ID_PRI_TDM_IBIT, 19200000, 0);
-		break;
-	default:
-		break;
-	}
-
 	return qcom_snd_sdw_hw_params(substream, params, &pdata->sruntime[cpu_dai->id]);
 }
 
@@ -130,12 +134,12 @@ static int qcm6490_snd_hw_free(struct snd_pcm_substream *substream)
 static const struct snd_soc_dapm_widget qcm6490_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
-	SND_SOC_DAPM_PINCTRL("AUDIO_OUT_PINCTRL", "audio_out_active", "audio_out_sleep"),
+	SND_SOC_DAPM_PINCTRL("STUB_AIF1_PINCTRL", "stub_aif1_active", "stub_aif1_sleep"),
 };
 
 static const struct snd_soc_dapm_route qcm6490_dapm_routes[] = {
-	{"Playback", NULL, "AUDIO_OUT_PINCTRL"},
-	{"Capture", NULL, "AUDIO_OUT_PINCTRL"},
+	{"STUB_AIF1_RX", NULL, "STUB_AIF1_PINCTRL"},
+	{"STUB_AIF1_TX", NULL, "STUB_AIF1_PINCTRL"},
 };
 
 static const struct snd_soc_ops qcm6490_be_ops = {

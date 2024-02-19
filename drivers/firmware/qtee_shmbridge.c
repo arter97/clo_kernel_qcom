@@ -2,10 +2,10 @@
 /*
  * QTI TEE shared memory bridge driver
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#define pr_fmt(fmt) "shmbridge: %s: " fmt, __func__
+#define pr_fmt(fmt) "shmbridge: [%d][%s]: " fmt, __LINE__,  __func__
 
 #include <linux/module.h>
 #include <linux/device.h>
@@ -31,9 +31,6 @@
 #define SHM_NUM_VM_SHIFT 9
 #define SHM_VM_MASK 0xFFFF
 #define SHM_PERM_MASK 0x7
-
-#define VM_PERM_R PERM_READ
-#define VM_PERM_W PERM_WRITE
 
 #define SHMBRIDGE_E_NOT_SUPPORTED 4	/* SHMbridge is not implemented */
 
@@ -321,7 +318,7 @@ int32_t qtee_shmbridge_register(
 
 	if (support_hyp) {
 		size_and_flags |= SELF_OWNER_BIT << 1;
-		size_and_flags |= (VM_PERM_R | VM_PERM_W) << 2;
+		size_and_flags |= QCOM_SCM_PERM_RW << 2;
 	}
 
 	pr_debug("%s: desc.args[0] %llx, args[1] %llx, args[2] %llx, args[3] %llx\n",
@@ -454,9 +451,9 @@ static int qtee_shmbridge_init(struct platform_device *pdev)
 	int ret = 0;
 	uint32_t custom_bridge_size;
 	uint32_t *ns_vm_ids;
-	uint32_t ns_vm_ids_hlos[] = {VMID_HLOS};
+	uint32_t ns_vm_ids_hlos[] = {QCOM_SCM_VMID_HLOS};
 	uint32_t ns_vm_ids_hyp[] = {};
-	uint32_t ns_vm_perms[] = {VM_PERM_R|VM_PERM_W};
+	uint32_t ns_vm_perms[] = {QCOM_SCM_PERM_RW};
 
 	support_hyp = of_property_read_bool((&pdev->dev)->of_node,
 			"qcom,support-hypervisor");
@@ -480,18 +477,30 @@ static int qtee_shmbridge_init(struct platform_device *pdev)
 	pr_err("qtee shmbridge registered default bridge with size %zu bytes\n",
 		default_bridge.size);
 
-	default_bridge.vaddr = (void *)__get_free_pages(GFP_KERNEL|__GFP_COMP,
+	/*
+	 * First try to allocate memory via free_pages speciying DMA capabilities
+	 * as 32bit(GFP_DMA32) by default as _scm->dev is also based on 32bit.
+	 *
+	 * In case of failures, try to allocate with dma_alloc_coherent.
+	 */
+	default_bridge.vaddr = (void *)__get_free_pages(GFP_KERNEL|__GFP_COMP|GFP_DMA32,
 				get_order(default_bridge.size));
-	if (!default_bridge.vaddr)
-		return -ENOMEM;
 
-	default_bridge.paddr = dma_map_single(&pdev->dev,
+	if (default_bridge.vaddr) {
+		default_bridge.paddr = dma_map_single(&pdev->dev,
 				default_bridge.vaddr, default_bridge.size,
 				DMA_TO_DEVICE);
-	if (dma_mapping_error(&pdev->dev, default_bridge.paddr)) {
-		pr_err("dma_map_single() failed\n");
-		ret = -ENOMEM;
-		goto exit_freebuf;
+		if (dma_mapping_error(&pdev->dev, default_bridge.paddr)) {
+			pr_err("dma_map_single() failed\n");
+			ret = -ENOMEM;
+			goto exit_freebuf;
+		}
+	} else {
+		pr_info("Allocation via free_pages failed, trying with dma_alloc now..\n");
+		default_bridge.vaddr = dma_alloc_coherent(&pdev->dev, default_bridge.size,
+								&default_bridge.paddr, GFP_KERNEL);
+		if (!default_bridge.vaddr)
+			return -ENOMEM;
 	}
 	default_bridge.dev = &pdev->dev;
 
@@ -529,12 +538,12 @@ static int qtee_shmbridge_init(struct platform_device *pdev)
 	if (support_hyp)
 		ret = qtee_shmbridge_register(default_bridge.paddr,
 			default_bridge.size, ns_vm_ids,
-			ns_vm_perms, 0, VM_PERM_R|VM_PERM_W,
+			ns_vm_perms, 0, QCOM_SCM_PERM_RW,
 			&default_bridge.handle);
 	else
 		ret = qtee_shmbridge_register(default_bridge.paddr,
 			default_bridge.size, ns_vm_ids,
-			ns_vm_perms, 1, VM_PERM_R|VM_PERM_W,
+			ns_vm_perms, 1, QCOM_SCM_PERM_RW,
 			&default_bridge.handle);
 
 	if (ret) {
@@ -565,9 +574,6 @@ exit:
 
 static int qtee_shmbridge_probe(struct platform_device *pdev)
 {
-#ifdef CONFIG_ARM64
-	dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
-#endif
 	return qtee_shmbridge_init(pdev);
 }
 

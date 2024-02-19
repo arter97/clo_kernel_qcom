@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
+
 #include <linux/vmalloc.h>
 #include <linux/types.h>
 #include <linux/list.h>
@@ -734,6 +736,10 @@ int set_stage(struct iris_inst *inst,
 		    V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES)
 			work_mode = STAGE_1;
 
+		if (inst->hfi_rc_type == HFI_RC_CBR_CFR ||
+		    inst->hfi_rc_type == HFI_RC_CBR_VFR)
+			work_mode = STAGE_1;
+
 		if (!inst->cap[GOP_SIZE].value)
 			work_mode = STAGE_2;
 	}
@@ -967,6 +973,19 @@ int set_peak_bitrate(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
 				     get_port_info(inst, cap_id),
 				     HFI_PAYLOAD_U32,
 				     &hfi_val, sizeof(u32));
+}
+
+int set_bitrate_mode(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
+{
+	u32 hfi_value, hfi_id;
+
+	hfi_id = inst->cap[cap_id].hfi_id;
+	hfi_value = inst->hfi_rc_type;
+
+	return iris_hfi_set_property(inst, hfi_id, HFI_HOST_FLAGS_NONE,
+			get_port_info(inst, cap_id),
+			HFI_PAYLOAD_U32_ENUM,
+			&hfi_value, sizeof(u32));
 }
 
 int set_use_and_mark_ltr(struct iris_inst *inst, enum plat_inst_cap_type cap_id)
@@ -1398,6 +1417,8 @@ int adjust_bitrate_mode(struct iris_inst *inst, struct v4l2_ctrl *ctrl)
 			inst->hfi_rc_type = HFI_RC_CBR_CFR;
 	} else if (bitrate_mode == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ) {
 		inst->hfi_rc_type = HFI_RC_CQ;
+	} else if (bitrate_mode == V4L2_MPEG_VIDEO_BITRATE_MODE_MBR) {
+		inst->hfi_rc_type = HFI_RC_MBR;
 	}
 
 	return 0;
@@ -1465,7 +1486,7 @@ int adjust_ltr_count(struct iris_inst *inst, struct v4l2_ctrl *ctrl)
 
 	rc_mode = inst->cap[BITRATE_MODE].value;
 
-	if (rc_mode != V4L2_MPEG_VIDEO_BITRATE_MODE_CBR ||
+	if (rc_mode != V4L2_MPEG_VIDEO_BITRATE_MODE_CBR &&
 	    inst->hfi_rc_type != HFI_RC_OFF)
 		adjusted_value = 0;
 

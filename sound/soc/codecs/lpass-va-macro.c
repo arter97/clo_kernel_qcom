@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
-// Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+// Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
 
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
@@ -915,14 +915,16 @@ static int va_macro_digital_mute(struct snd_soc_dai *dai, int mute, int stream)
 			 VA_MACRO_DEC_MAX) {
 		tx_vol_ctl_reg = CDC_VA_TX0_TX_PATH_CTL +
 					VA_MACRO_TX_PATH_OFFSET * decimator;
-		if (mute)
+		if (mute) {
 			snd_soc_component_update_bits(component, tx_vol_ctl_reg,
 					CDC_VA_TX_PATH_PGA_MUTE_EN_MASK,
 					CDC_VA_TX_PATH_PGA_MUTE_EN);
-		else
+		} else {
 			snd_soc_component_update_bits(component, tx_vol_ctl_reg,
 					CDC_VA_TX_PATH_PGA_MUTE_EN_MASK,
 					CDC_VA_TX_PATH_PGA_MUTE_DISABLE);
+			usleep_range(2000, 2010);
+		}
 	}
 
 	return 0;
@@ -1604,6 +1606,8 @@ static int __maybe_unused va_macro_runtime_suspend(struct device *dev)
 	regcache_mark_dirty(va->regmap);
 
 	clk_disable_unprepare(va->mclk);
+	clk_disable_unprepare(va->dcodec);
+	clk_disable_unprepare(va->macro);
 
 	return 0;
 }
@@ -1612,6 +1616,18 @@ static int __maybe_unused va_macro_runtime_resume(struct device *dev)
 {
 	struct va_macro *va = dev_get_drvdata(dev);
 	int ret;
+
+	ret = clk_prepare_enable(va->dcodec);
+	if (ret) {
+		dev_err(dev, "unable to prepare dcodec\n");
+		return ret;
+	}
+
+	ret = clk_prepare_enable(va->macro);
+	if (ret) {
+		dev_err(dev, "unable to prepare macro\n");
+		return ret;
+	}
 
 	ret = clk_prepare_enable(va->mclk);
 	if (ret) {
