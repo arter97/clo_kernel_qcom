@@ -37,7 +37,10 @@
 #define PIPE3_PHYSTATUS_SW			BIT(3)
 #define PIPE_UTMI_CLK_DIS			BIT(8)
 
-#define PWR_EVNT_IRQ_STAT_REG			0x58
+#define PWR_EVNT_IRQ1_STAT_REG			0x58
+#define PWR_EVNT_IRQ2_STAT_REG			0x1dc
+#define PWR_EVNT_IRQ3_STAT_REG			0x228
+#define PWR_EVNT_IRQ4_STAT_REG			0x238
 #define PWR_EVNT_LPM_IN_L2_MASK			BIT(4)
 #define PWR_EVNT_LPM_OUT_L2_MASK		BIT(5)
 
@@ -85,12 +88,19 @@ struct dwc3_qcom {
 	struct notifier_block	host_nb;
 
 	const struct dwc3_acpi_pdata *acpi_pdata;
-
+	struct regulator	*dwc3_gdsc;
 	enum usb_dr_mode	mode;
 	bool			is_suspended;
 	bool			pm_suspended;
 	struct icc_path		*icc_path_ddr;
 	struct icc_path		*icc_path_apps;
+};
+
+static u32 pwr_evnt_irq_stat_reg_offset[4] = {
+			PWR_EVNT_IRQ1_STAT_REG,
+			PWR_EVNT_IRQ2_STAT_REG,
+			PWR_EVNT_IRQ3_STAT_REG,
+			PWR_EVNT_IRQ4_STAT_REG,
 };
 
 static inline void dwc3_qcom_setbits(void __iomem *base, u32 offset, u32 val)
@@ -418,17 +428,61 @@ static void dwc3_qcom_enable_interrupts(struct dwc3_qcom *qcom)
 	dwc3_qcom_enable_wakeup_irq(qcom->ss_phy_irq, 0);
 }
 
+/*
+ * Config Global Distributed Switch Controller (GDSC)
+ * to support controller power collapse
+ */
+static int dwc3_qcom_config_gdsc(struct dwc3_qcom *qcom, int on)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(qcom->dwc3_gdsc))
+		return -EPERM;
+
+	if (on) {
+		ret = regulator_enable(qcom->dwc3_gdsc);
+		if (ret) {
+			dev_err(qcom->dev, "unable to enable usb3 gdsc\n");
+			return ret;
+		}
+	/**
+	 * TODO: Take care of GDSC retaintion here.
+	 *
+	 * qcom_clk_set_flags(mdwc->core_clk, CLKFLAG_RETAIN_MEM);
+	 *
+	 */
+	} else {
+	/**
+	 * TODO: Take care of GDSC retaintion here.
+	 *
+	 * qcom_clk_set_flags(mdwc->core_clk, CLKFLAG_NORETAIN_MEM);
+	 *
+	 */
+		ret = regulator_disable(qcom->dwc3_gdsc);
+		if (ret) {
+			dev_err(qcom->dev, "unable to disable usb3 gdsc\n");
+			return ret;
+		}
+	}
+
+	return ret;
+}
+
+
 static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
 {
 	u32 val;
 	int i, ret;
+	struct dwc3 *dwc = platform_get_drvdata(qcom->dwc3);
 
 	if (qcom->is_suspended)
 		return 0;
 
-	val = readl(qcom->qscratch_base + PWR_EVNT_IRQ_STAT_REG);
-	if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
-		dev_err(qcom->dev, "HS-PHY not in L2\n");
+	for (i = 0; i < dwc->num_ports; i++) {
+		val = readl(qcom->qscratch_base + pwr_evnt_irq_stat_reg_offset[i]);
+		if (!(val & PWR_EVNT_LPM_IN_L2_MASK))
+			dev_err(qcom->dev, "HS-PHY%d not in L2\n", i);
+	}
 
 	for (i = qcom->num_clocks - 1; i >= 0; i--)
 		clk_disable_unprepare(qcom->clks[i]);
@@ -446,6 +500,10 @@ static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
 		dwc3_qcom_enable_interrupts(qcom);
 	}
 
+	ret = dwc3_qcom_config_gdsc(qcom, 0);
+	if (ret < 0)
+		return ret;
+
 	qcom->is_suspended = true;
 
 	return 0;
@@ -455,9 +513,14 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
 {
 	int ret;
 	int i;
+	struct dwc3 *dwc = platform_get_drvdata(qcom->dwc3);
 
 	if (!qcom->is_suspended)
 		return 0;
+
+	ret = dwc3_qcom_config_gdsc(qcom, 1);
+	if (ret < 0)
+		return ret;
 
 	if (dwc3_qcom_is_host(qcom) && wakeup)
 		dwc3_qcom_disable_interrupts(qcom);
@@ -476,8 +539,10 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
 		dev_warn(qcom->dev, "failed to enable interconnect: %d\n", ret);
 
 	/* Clear existing events from PHY related to L2 in/out */
-	dwc3_qcom_setbits(qcom->qscratch_base, PWR_EVNT_IRQ_STAT_REG,
-			  PWR_EVNT_LPM_IN_L2_MASK | PWR_EVNT_LPM_OUT_L2_MASK);
+	for (i = 0; i < dwc->num_ports; i++)
+		dwc3_qcom_setbits(qcom->qscratch_base,
+			pwr_evnt_irq_stat_reg_offset[i],
+			PWR_EVNT_LPM_IN_L2_MASK | PWR_EVNT_LPM_OUT_L2_MASK);
 
 	qcom->is_suspended = false;
 
@@ -742,6 +807,7 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 	struct device_node	*np = pdev->dev.of_node, *dwc3_np;
 	struct device		*dev = &pdev->dev;
 	int			ret;
+	struct device		*dwc3_dev;
 
 	dwc3_np = of_get_compatible_child(np, "snps,dwc3");
 	if (!dwc3_np) {
@@ -760,6 +826,8 @@ static int dwc3_qcom_of_register_core(struct platform_device *pdev)
 		ret = -ENODEV;
 		dev_err(dev, "failed to get dwc3 platform device\n");
 	}
+
+	dwc3_dev = &qcom->dwc3->dev;
 
 node_put:
 	of_node_put(dwc3_np);
@@ -839,6 +907,18 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "failed to deassert resets, err=%d\n", ret);
 		goto reset_assert;
+	}
+
+	qcom->dwc3_gdsc = devm_regulator_get(qcom->dev, "USB3_GDSC");
+	if (IS_ERR(qcom->dwc3_gdsc)) {
+		dev_err(&pdev->dev, "gdsc acqusition faled\n");
+		return PTR_ERR(qcom->dwc3_gdsc);
+	}
+
+	ret = regulator_enable(qcom->dwc3_gdsc);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to enable usb3 gdsc\n");
+		return ret;
 	}
 
 	ret = dwc3_qcom_clk_init(qcom, of_clk_get_parent_count(np));
