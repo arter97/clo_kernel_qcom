@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SPI_Q2SPI_MSM_H_
@@ -194,7 +194,6 @@ if (q2spi_ptr) { \
 static unsigned int q2spi_max_speed;
 /* global storage for device Major number */
 static int q2spi_cdev_major;
-static int q2spi_alloc_count;
 
 enum abort_code {
 	TERMINATE_CMD = 0,
@@ -308,8 +307,8 @@ struct q2spi_host_soft_reset_pkt {
 	u8 cmd:4;
 	u8 flags:4;
 	u8 code:4;
-	u8 flow_id:4;
-	u8 reserved[5];
+	u8 rsvd:4;
+	u8 rsvd_1[5];
 };
 
 enum cr_var_type {
@@ -362,6 +361,8 @@ struct q2spi_chrdev {
  * @rx_dma: dma pointer for Rx transfer
  * @cmd: q2spi cmd type
  * @tid: Unique Transaction ID. Used for q2spi messages.
+ * @queue: struct list head
+ * @q2spi_pkt: pointer to q2spi_pkt
  */
 struct q2spi_dma_transfer {
 	void *tx_buf;
@@ -375,10 +376,12 @@ struct q2spi_dma_transfer {
 	enum cmd_type cmd;
 	int tid;
 	struct list_head queue;
+	struct q2spi_packet *q2spi_pkt;
 };
 
 /**
  * struct q2spi_geni - structure to store Q2SPI GENI information
+ *
  * @wrapper_dev: qupv3 wrapper device pointer
  * @dev: q2spi device pointer
  * @base: pointer to ioremap()'d registers
@@ -390,24 +393,56 @@ struct q2spi_dma_transfer {
  * @geni_gpio_sleep: sleep state pin control
  * q2spi_chrdev: cdev structure
  * @geni_se: stores info parsed from device tree
- * @q2spi_dma_transfer: stores Q2SPI transfer dma information
- * @q2spi_gsi: stores GSI structure information
+ * @gsi: stores GSI structure information
+ * @qup_gsi_err: flahg to set incase of gsi errors
  * @xfer: reference to q2spi_dma_transfer structure
  * @db_xfer: reference to q2spi_dma_transfer structure for doorbell
  * @req: reference to q2spi request structure
  * @c_req: reference to q2spi client request structure
- * @rx_fifo_depth: RX FIFO depth
- * @tx_fifo_depth: TX FIFO depth
- * @tx_fifo_width: TX FIFO width
  * @setup_config0: used to mark config0 setup completion
  * @irq: IRQ of the SE
- * @lock: Lock to protect xfer
+ * @tx_queue_list: list for HC packets
+ * @cr_queue_list: list for CR pakcets
+ * @cr_hc_queue_list: list for CR doorbell received for HC
+ * @kworker: kthread worker to process the q2spi requests
+ * @send_messages: work function to process the q2spi requests
+ * @gsi_lock: lock to protect gsi operations
+ * @txn_lock: lock to protect transfer id allocation and free
+ * @queue_lock: lock to protect HC operations
+ * @cr_queue_lock: lock to protect CR operations
+ * @max_speed_hz: stores maxspeed of the SCLK frequency
+ * @cur_speed_hz: stores maxspeed of the SCLK frequency
+ * @oversampling: stores sampling value based on major and minor version
+ * @xfer_mode: stored mode of transfer
+ * @curr_xfer_mode: stored current  mode of transfer
+ * @gsi_mode: flag for gsi mode
+ * @tx_cb: completion for tx dma
+ * @rx_cb: completion for rx dma
+ * @db_rx_cb: completion for doobell rx dma
+ * @rx_avail: used to notify the client for avaialble rx data
  * @tid_idr: tid id allocator
  * @readq: waitqueue for rx data
+ * @hrf_flow: flag to indicate HRF flow
+ * @doorbell_up: completion for doorbell receive
+ * @var1_buf: virtual pointer for varient1
+ * @var1_dma_buf: physical dma pointer for varient1
+ * @var5_buf: virtual pointer for varient5
+ * @var5_dma_buf: physical dma pointer for varient5
+ * @cr_buf: virtual pointer for CR
+ * @cr_dma_buf: physical dma pointer for CR
+ * @var1_buf_used: pointer to store varient1 buffer used
+ * @var5_buf_used: pointer to store varient5 buffer used
+ * @cr_buf_used: pointer to store CR buffer used
+ * @sync_wait: completion for q2spi_transfer wait
+ * @sma_wait: completion for SMA
  * @hw_state_is_bad: used when HW is in un-recoverable state
  * @max_dump_data_size: max size of data to be dumped as part of dump_ipc function
  * @doorbell_pending: Set when independent doorbell CR received
  * @retry: used when independent doorbell processing is pending to retry the request from host
+ * @alloc_count: reflects count of memory allocations done by q2spi_kzalloc
+ * @resources_on: flag which reflects geni resources are turned on/off
+ * @port_release: reflects if q2spi port is being closed
+ * @is_suspend: reflects if q2spi driver is in system suspend
  */
 struct q2spi_geni {
 	struct device *wrapper_dev;
@@ -430,7 +465,6 @@ struct q2spi_geni {
 	bool setup_config0;
 	int irq;
 	struct list_head tx_queue_list;
-	struct list_head rx_queue_list;
 	struct list_head cr_queue_list;
 	struct list_head hc_cr_queue_list;
 	struct kthread_worker *kworker;
@@ -449,10 +483,9 @@ struct q2spi_geni {
 	int xfer_mode;
 	int cur_xfer_mode;
 	bool gsi_mode; /* GSI Mode */
-	void *q2spi_buf;
-	bool cmd_done;
 	struct completion tx_cb;
 	struct completion rx_cb;
+	struct completion db_rx_cb;
 	atomic_t rx_avail;
 	struct idr tid_idr;
 	wait_queue_head_t readq;
@@ -474,6 +507,7 @@ struct q2spi_geni {
 	void *bulk_buf_used[Q2SPI_MAX_BUF];
 	dma_addr_t dma_buf;
 	struct completion sync_wait;
+	struct completion sma_wait;
 	void *ipc;
 	struct work_struct q2spi_doorbell_work;
 	struct workqueue_struct *doorbell_wq;
@@ -485,21 +519,28 @@ struct q2spi_geni {
 	int max_data_dump_size;
 	atomic_t doorbell_pending;
 	atomic_t retry;
+	atomic_t alloc_count;
+	bool resources_on;
+	bool port_release;
+	bool is_suspend;
 };
 
 /**
  * struct q2spi_cr_packet - structure for Q2SPI CR packet
  *
- * @q2spi: pointer for q2spi_geni structure
- * @cr_hdr: pointer for q2spi_cr_header structure
- * @var3: pointer for q2spi_client_dma_pkt structure
- * @bulk: pointer for q2spi_client_bulk_access_pkt structure
- * @vtype: variant type.
- * @hrf_flow_id: flow id used for transaction.
- * @list: list for CR packets.
+ * @cr_hdr: array of q2spi_cr_header structures
+ * @var3_pkt: pointer for q2spi_client_dma_pkt structure
+ * @bulk_pkt: pointer for q2spi_client_bulk_access_pkt structure
+ * @vtype: variant type
+ * @hrf_flow_id: flow id used for transaction
+ * @list: list for CR packets
+ * @no_of_valid_crs: number of valid CRs in CR packet
+ * @type: type of CR header corresponding to
+ * @xfer: pointer to dma_transfer structure
+ * @q2spi_pkt: pointer to q2spi_pkt
  */
 struct q2spi_cr_packet {
-	struct q2spi_cr_header *cr_hdr[4];
+	struct q2spi_cr_header cr_hdr[4];
 	struct q2spi_client_dma_pkt var3_pkt; /* 4.2.2.3 Variant 4 T=3 */
 	struct q2spi_client_bulk_access_pkt bulk_pkt; /* 4.2.2.5 Bulk Access Status */
 	enum cr_var_type vtype;
@@ -520,12 +561,14 @@ struct q2spi_cr_packet {
  * @var5_pkt: pointer for HC variant4_5_pkt structure
  * @abort_pkt: pointer for abort_pkt structure
  * @soft_reset_pkt: pointer for q2spi_soft_reset_pkt structure
+ * @xfer: pointer to dma_transfer structure
  * @vtype: variant type.
  * @valid: packet valid or not.
  * @hrf_flow_id: flow id usedyy for transaction.
  * @status: success of failure xfer status
  * @var1_tx_dma: variant_1 tx_dma buffer pointer
  * @var5_tx_dma: variant_5 tx_dma buffer pointer
+ * @soft_reset_tx_dma: soft_reset tx_dma buffer pointer
  * @sync: sync or async mode of transfer
  * @q2spi: pointer for q2spi_geni structure
  * @list: list for hc packets.
@@ -539,12 +582,14 @@ struct q2spi_packet {
 	struct q2spi_host_variant4_5_pkt *var5_pkt; /*4.4.3.3 Variant 5 */
 	struct q2spi_host_abort_pkt *abort_pkt; /* 4.4.4 Abort Command */
 	struct q2spi_host_soft_reset_pkt *soft_reset_pkt; /*4.4.6.2 Soft Reset Command */
+	struct q2spi_dma_transfer *xfer;
 	enum var_type vtype;
 	bool valid;
 	u8 hrf_flow_id;
 	enum xfer_status status;
 	dma_addr_t var1_tx_dma;
 	dma_addr_t var5_tx_dma;
+	dma_addr_t soft_reset_tx_dma;
 	bool sync;
 	struct q2spi_geni *q2spi;
 	struct list_head list;
@@ -558,14 +603,17 @@ void q2spi_geni_se_dump_regs(struct q2spi_geni *q2spi);
 void q2spi_dump_ipc(struct q2spi_geni *q2spi, void *ipc_ctx, char *prefix, char *str, int size);
 void q2spi_trace_log(struct device *dev, const char *fmt, ...);
 void dump_ipc(struct q2spi_geni *q2spi, void *ctx, char *prefix, char *str, int size);
-void *q2spi_kzalloc(struct q2spi_geni *q2spi, int size);
-void q2spi_kfree(struct q2spi_geni *q2spi, void *ptr);
+void *q2spi_kzalloc(struct q2spi_geni *q2spi, int size, int line);
+void q2spi_kfree(struct q2spi_geni *q2spi, void *ptr, int line);
 int q2spi_setup_gsi_xfer(struct q2spi_packet *q2spi_pkt);
 int q2spi_alloc_xfer_tid(struct q2spi_geni *q2spi);
 int q2spi_geni_gsi_setup(struct q2spi_geni *q2spi);
+void q2spi_geni_gsi_release(struct q2spi_geni *q2spi);
 int check_gsi_transfer_completion(struct q2spi_geni *q2spi);
 int check_gsi_transfer_completion_rx(struct q2spi_geni *q2spi);
 int q2spi_read_reg(struct q2spi_geni *q2spi, int reg_offset);
 void q2spi_dump_client_error_regs(struct q2spi_geni *q2spi);
+int q2spi_geni_resources_on(struct q2spi_geni *q2spi);
+void q2spi_geni_resources_off(struct q2spi_geni *q2spi);
 
 #endif /* _SPI_Q2SPI_MSM_H_ */
