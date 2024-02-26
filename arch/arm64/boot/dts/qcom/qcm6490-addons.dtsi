@@ -512,6 +512,21 @@
 	status = "disabled";
 };
 
+&pm8350c {
+	pm8350c_bcl: bcl@4700 {
+		compatible = "qcom,bcl-v5";
+		reg = <0x4700 0x100>;
+		interrupts = <0x2 0x47 0x0 IRQ_TYPE_NONE>,
+				<0x2 0x47 0x1 IRQ_TYPE_NONE>,
+				<0x2 0x47 0x2 IRQ_TYPE_NONE>;
+		interrupt-names = "bcl-lvl0",
+					"bcl-lvl1",
+					"bcl-lvl2";
+		qcom,pmic7-threshold;
+		#thermal-sensor-cells = <1>;
+	};
+};
+
 &remoteproc_cdsp {
 	cooling {
 		compatible = "qcom,qmi-cooling-cdsp";
@@ -575,6 +590,12 @@
 	msm_stub_codec: msm-stub-codec {
 		compatible = "qcom,msm-stub-codec";
 		#sound-dai-cells = <1>;
+	};
+
+	qcom,devfreq-cdev {
+		compatible = "qcom,devfreq-cdev";
+		qcom,devfreq = <&msm_gpu>;
+		#cooling-cells = <2>;
 	};
 
 	/* smp2p information */
@@ -766,6 +787,11 @@
 			map1 {
 				trip = <&camera0_alert1>;
 				cooling-device = <&modem_pa 3 3>;
+			};
+
+			map2 {
+				trip = <&camera0_alert1>;
+				cooling-device = <&msm_gpu 5 5>;
 			};
 		};
 	};
@@ -1159,6 +1185,14 @@
 				type = "critical";
 			};
 		};
+
+		cooling-maps {
+			map0 {
+				trip = <&gpuss0_alert1>;
+				cooling-device = <&msm_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+
+			};
+		};
 	};
 
 	gpuss1-thermal {
@@ -1178,6 +1212,13 @@
 			gpuss1-crit {
 				temperature = <118000>;
 				hysteresis = <2000>;
+			};
+		};
+
+		cooling-maps {
+			map0 {
+				trip = <&gpuss1_alert1>;
+				cooling-device = <&msm_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 			};
 		};
 	};
@@ -1417,6 +1458,11 @@
 				trip = <&nspss0_alert1>;
 				cooling-device = <&modem_pa 3 3>;
 			};
+
+			map2 {
+				trip = <&nspss0_alert1>;
+				cooling-device = <&msm_gpu 5 5>;
+			};
 		};
 	};
 
@@ -1451,6 +1497,114 @@
 				trip = <&nspss1_alert1>;
 				cooling-device = <&modem_pa 3 3>;
 			};
+
+			map2 {
+				trip = <&nspss1_alert1>;
+				cooling-device = <&msm_gpu 5 5>;
+			};
+		};
+	};
+
+	pm8350c-bcl-lvl0 {
+		polling-delay-passive = <100>;
+		polling-delay = <0>;
+		thermal-sensors = <&pm8350c_bcl 5>;
+
+		trips {
+			c_bcl_lvl0: c-bcl-lvl0 {
+				temperature = <1>;
+				hysteresis = <1>;
+				type = "passive";
+			};
+		};
+
+		cooling-maps {
+			map0 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&CPU4_idle 100 100>;
+			};
+
+			map1 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&CPU5_idle 100 100>;
+			};
+
+			map2 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&CPU6_idle 100 100>;
+			};
+
+			map3 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&CPU7_idle 100 100>;
+			};
+
+			map4 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&cdsp_sw 2 2>;
+			};
+
+			map5 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&modem_pa 2 2>;
+			};
+
+			map6 {
+				trip = <&c_bcl_lvl0>;
+				cooling-device = <&modem_tj 1 1>;
+			};
+		};
+	};
+
+	pm8350c-bcl-lvl1 {
+		polling-delay-passive = <100>;
+		polling-delay = <0>;
+		thermal-sensors = <&pm8350c_bcl 6>;
+
+		trips {
+			c_bcl_lvl1: c-bcl-lvl1 {
+				temperature = <1>;
+				hysteresis = <1>;
+				type = "passive";
+			};
+		};
+
+		cooling-maps {
+			map0 {
+				trip = <&c_bcl_lvl1>;
+				cooling-device = <&msm_gpu 5 THERMAL_NO_LIMIT>;
+			};
+
+			map1 {
+				trip = <&c_bcl_lvl1>;
+				cooling-device = <&cdsp_sw 4 4>;
+			};
+
+			map2 {
+				trip = <&c_bcl_lvl1>;
+				cooling-device = <&modem_tj 3 3>;
+			};
+		};
+	};
+
+	pm8350c-bcl-lvl2 {
+		polling-delay-passive = <100>;
+		polling-delay = <0>;
+		thermal-sensors = <&pm8350c_bcl 7>;
+
+		trips {
+			c_bcl_lvl2: c-bcl-lvl2 {
+				temperature = <1>;
+				hysteresis = <1>;
+				type = "passive";
+			};
+		};
+
+		cooling-maps {
+			map0 {
+				trip = <&c_bcl_lvl2>;
+				cooling-device = <&cdsp_sw 5 5>;
+			};
 		};
 	};
 
@@ -1484,6 +1638,11 @@
 			map1 {
 				trip = <&video_alert1>;
 				cooling-device = <&modem_pa 3 3>;
+			};
+
+			map2 {
+				trip = <&video_alert1>;
+				cooling-device = <&msm_gpu 5 5>;
 			};
 		};
 	};
