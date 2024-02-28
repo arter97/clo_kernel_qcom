@@ -19,7 +19,6 @@
 #include <linux/of.h>
 #include <linux/dma-buf.h>
 #include <linux/firmware/qcom/qcom_scm.h>
-#include <linux/firmware/qcom/qcom_scm_addon.h>
 #include <linux/qtee_shmbridge.h>
 #include <linux/proc_fs.h>
 #include <linux/version.h>
@@ -1770,6 +1769,10 @@ static int tz_log_probe(struct platform_device *pdev)
 	phys_addr_t tzdiag_phy_iobase;
 	uint32_t *ptr = NULL;
 	int ret = 0, i;
+
+	/* Defer if qcom_scm is not available */
+	if (!qcom_scm_is_available())
+		return dev_err_probe(&pdev->dev, -EPROBE_DEFER, "qcom_scm is not up!\n");
 
 	/*
 	 * By default all nodes will be created.
