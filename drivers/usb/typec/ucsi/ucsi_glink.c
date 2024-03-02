@@ -2,16 +2,21 @@
 /*
  * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023, Linaro Ltd
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/auxiliary_bus.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/of_device.h>
 #include <linux/property.h>
 #include <linux/soc/qcom/pdr.h>
 #include <linux/usb/typec_mux.h>
 #include <linux/gpio/consumer.h>
 #include <linux/soc/qcom/pmic_glink.h>
 #include "ucsi.h"
+
+#define CREATE_TRACE_POINTS
+#include "ucsi_glink_trace.h"
 
 #define PMIC_GLINK_MAX_PORTS	2
 
@@ -76,6 +81,48 @@ struct pmic_glink_ucsi {
 	u8 read_buf[UCSI_BUF_SIZE];
 };
 
+static char *offset_to_name(unsigned int offset)
+{
+	char *type;
+
+	switch (offset) {
+	case UCSI_VERSION:
+		type = "VER:";
+		break;
+	case UCSI_CCI:
+		type = "CCI:";
+		break;
+	case UCSI_CONTROL:
+		type = "CONTROL:";
+		break;
+	case UCSI_MESSAGE_IN:
+		type = "MSG_IN:";
+		break;
+	case UCSI_MESSAGE_OUT:
+		type = "MSG_OUT:";
+		break;
+	default:
+		type = "UNKNOWN:";
+		break;
+	}
+
+	return type;
+}
+
+static void ucsi_log(const char *prefix, unsigned int offset, u8 *buf,
+				size_t len)
+{
+	char str[256] = { 0 };
+	u32 i, pos = 0;
+
+	for (i = 0; i < len && pos < sizeof(str) - 1; i++)
+		pos += scnprintf(str + pos, sizeof(str) - pos, "%02x ", buf[i]);
+
+	str[pos] = '\0';
+
+	trace_ucsi_glink(prefix, offset_to_name(offset), str);
+}
+
 static int pmic_glink_ucsi_read(struct ucsi *__ucsi, unsigned int offset,
 				void *val, size_t val_len)
 {
@@ -106,6 +153,8 @@ static int pmic_glink_ucsi_read(struct ucsi *__ucsi, unsigned int offset,
 	}
 
 	memcpy(val, &ucsi->read_buf[offset], val_len);
+	ucsi_log("read:", offset, (u8 *)val, val_len);
+
 	ret = 0;
 
 out_unlock:
@@ -150,6 +199,7 @@ static int pmic_glink_ucsi_async_write(struct ucsi *__ucsi, unsigned int offset,
 	int ret;
 
 	mutex_lock(&ucsi->lock);
+	ucsi_log("async_write:", offset, (u8 *)val, val_len);
 	ret = pmic_glink_ucsi_locked_write(ucsi, offset, val, val_len);
 	mutex_unlock(&ucsi->lock);
 
@@ -169,6 +219,8 @@ static int pmic_glink_ucsi_sync_write(struct ucsi *__ucsi, unsigned int offset,
 	ucsi->sync_val = 0;
 	reinit_completion(&ucsi->sync_ack);
 	ucsi->sync_pending = true;
+
+	ucsi_log("sync_write:", offset, (u8 *)val, val_len);
 	ret = pmic_glink_ucsi_locked_write(ucsi, offset, val, val_len);
 	mutex_unlock(&ucsi->lock);
 
@@ -198,6 +250,7 @@ static void pmic_glink_ucsi_read_ack(struct pmic_glink_ucsi *ucsi, const void *d
 	if (resp->ret_code)
 		return;
 
+	pr_debug("UCSI Read ACK\n");
 	memcpy(ucsi->read_buf, resp->buf, UCSI_BUF_SIZE);
 	complete(&ucsi->read_ack);
 }
@@ -209,6 +262,7 @@ static void pmic_glink_ucsi_write_ack(struct pmic_glink_ucsi *ucsi, const void *
 	if (resp->ret_code)
 		return;
 
+	pr_debug("UCSI write ack\n");
 	ucsi->sync_val = resp->ret_code;
 	complete(&ucsi->write_ack);
 }
@@ -226,6 +280,7 @@ static void pmic_glink_ucsi_notify(struct work_struct *work)
 		return;
 	}
 
+	ucsi_log("notify:", UCSI_CCI, (u8 *)&cci, sizeof(cci));
 	con_num = UCSI_CCI_CONNECTOR(cci);
 	if (con_num) {
 		if (con_num <= PMIC_GLINK_MAX_PORTS &&
@@ -296,11 +351,19 @@ static void pmic_glink_ucsi_destroy(void *data)
 	mutex_unlock(&ucsi->lock);
 }
 
+static const struct of_device_id pmic_glink_ucsi_of_quirks[] = {
+	{ .compatible = "qcom,sc8180x-pmic-glink", .data = (void *)UCSI_NO_PARTNER_PDOS, },
+	{ .compatible = "qcom,sc8280xp-pmic-glink", .data = (void *)UCSI_NO_PARTNER_PDOS, },
+	{ .compatible = "qcom,sm8350-pmic-glink", .data = (void *)UCSI_NO_PARTNER_PDOS, },
+	{}
+};
+
 static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
 				 const struct auxiliary_device_id *id)
 {
 	struct pmic_glink_ucsi *ucsi;
 	struct device *dev = &adev->dev;
+	const struct of_device_id *match;
 	struct fwnode_handle *fwnode;
 	int ret;
 
@@ -326,6 +389,10 @@ static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
 	ret = devm_add_action_or_reset(dev, pmic_glink_ucsi_destroy, ucsi);
 	if (ret)
 		return ret;
+
+	match = of_match_device(pmic_glink_ucsi_of_quirks, dev->parent);
+	if (match)
+		ucsi->ucsi->quirks = (unsigned long)match->data;
 
 	ucsi_set_drvdata(ucsi->ucsi, ucsi);
 

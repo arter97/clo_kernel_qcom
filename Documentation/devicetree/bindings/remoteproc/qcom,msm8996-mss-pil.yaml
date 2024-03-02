@@ -145,6 +145,12 @@ properties:
       and devices related to the Modem.
     unevaluatedProperties: false
 
+  cooling:
+    $ref: /schemas/thermal/qcom,qmi-cooling.yaml#
+    description:
+      Cooling subnode which represents the cooling devices exposed by the Modem.
+    unevaluatedProperties: false
+
   # Deprecated properties
   mba:
     type: object
@@ -385,6 +391,15 @@ examples:
 
         qcom,smem-states = <&modem_smp2p_out 0>;
         qcom,smem-state-names = "stop";
+
+        cooling {
+            compatible = "qcom,qmi-cooling-modem";
+
+            vdd {
+                label = "cpuv_restriction_cold";
+                #cooling-cells = <2>;
+            };
+        };
 
         glink-edge {
             interrupts = <GIC_SPI 449 IRQ_TYPE_EDGE_RISING>;

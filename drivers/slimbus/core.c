@@ -160,6 +160,7 @@ static int slim_add_device(struct slim_controller *ctrl,
 	sbdev->ctrl = ctrl;
 	INIT_LIST_HEAD(&sbdev->stream_list);
 	spin_lock_init(&sbdev->stream_list_lock);
+	mutex_init(&ctrl->stream_lock);
 	sbdev->dev.of_node = of_node_get(node);
 	sbdev->dev.fwnode = of_fwnode_handle(node);
 
@@ -178,6 +179,9 @@ static struct slim_device *slim_alloc_device(struct slim_controller *ctrl,
 {
 	struct slim_device *sbdev;
 	int ret;
+
+	if (!ctrl || !eaddr)
+		return NULL;
 
 	sbdev = kzalloc(sizeof(*sbdev), GFP_KERNEL);
 	if (!sbdev)
@@ -492,6 +496,14 @@ int slim_device_report_present(struct slim_controller *ctrl,
 	int ret;
 
 	ret = pm_runtime_get_sync(ctrl->dev);
+	if (ret < 0) {
+		dev_err(ctrl->dev, "slim %s: PM get_sync failed ret :%d\n",
+			__func__, ret);
+		pm_runtime_put_noidle(ctrl->dev);
+		/* Set device in suspended since resume failed */
+		pm_runtime_set_suspended(ctrl->dev);
+		return ret;
+	}
 
 	if (ctrl->sched.clk_state != SLIM_CLK_ACTIVE) {
 		dev_err(ctrl->dev, "slim ctrl not active,state:%d, ret:%d\n",

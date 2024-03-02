@@ -48,42 +48,6 @@ static const struct segdist_code {
 	{768,	2,	0xc02,	 0x001},
 };
 
-/*
- * Presence Rate table for all Natural Frequencies
- * The Presence rate of a constant bitrate stream is mean flow rate of the
- * stream expressed in occupied Segments of that Data Channel per second.
- * Table 66 from SLIMbus 2.0 Specs
- *
- * Index of the table corresponds to Presence rate code for the respective rate
- * in the table.
- */
-static const int slim_presence_rate_table[] = {
-	0, /* Not Indicated */
-	12000,
-	24000,
-	48000,
-	96000,
-	192000,
-	384000,
-	768000,
-	0, /* Reserved */
-	11025,
-	22050,
-	44100,
-	88200,
-	176400,
-	352800,
-	705600,
-	4000,
-	8000,
-	16000,
-	32000,
-	64000,
-	128000,
-	256000,
-	512000,
-};
-
 /**
  * slim_stream_allocate() - Allocate a new SLIMbus Stream
  * @dev:Slim device to be associated with
@@ -179,14 +143,49 @@ static int slim_deactivate_remove_channel(struct slim_stream_runtime *stream,
 
 static int slim_get_prate_code(int rate)
 {
-	int i;
+	int ratem, ratefam, pr, exp = 0;
+	bool done = false, exact = true;
 
-	for (i = 0; i < ARRAY_SIZE(slim_presence_rate_table); i++) {
-		if (rate == slim_presence_rate_table[i])
-			return i;
+	ratem = ((rate == SLIM_FREQ_441) || (rate == SLIM_FREQ_882)) ?
+			(rate / SLIM_BASE_FREQ_11) : (rate / SLIM_BASE_FREQ_4);
+
+	ratefam = ((rate == SLIM_FREQ_441) || (rate == SLIM_FREQ_882)) ?
+			2 : 1;
+
+	while (!done) {
+		while ((ratem & 0x1) != 0x1) {
+			ratem >>= 1;
+			exp++;
+		}
+		if (ratem > 3) {
+			ratem++;
+			exact = false;
+		} else {
+			done = true;
+		}
 	}
 
-	return -EINVAL;
+	if (ratefam == 1) {
+		if (ratem == 1) {
+			pr = 0x10;
+		} else {
+			pr = 0;
+			exp++;
+		}
+	} else {
+		pr = 8;
+		exp++;
+	}
+
+	if (exp <= 7) {
+		pr |= exp;
+		if (exact)
+			pr |= 0x80;
+	} else {
+		pr = 0;
+	}
+
+	return pr;
 }
 
 /**
@@ -204,7 +203,7 @@ int slim_stream_prepare(struct slim_stream_runtime *rt,
 {
 	struct slim_controller *ctrl;
 	struct slim_port *port;
-	int num_ports, i, port_id, prrate;
+	int num_ports, i, port_id;
 
 	if (!rt || !cfg) {
 		pr_err("%s: Stream or cfg is NULL, Check from client side\n", __func__);
@@ -227,13 +226,6 @@ int slim_stream_prepare(struct slim_stream_runtime *rt,
 	rt->bps = cfg->bps;
 	rt->direction = cfg->direction;
 
-	prrate = slim_get_prate_code(cfg->rate);
-	if (prrate < 0) {
-		dev_err(&rt->dev->dev, "Cannot get presence rate for rate %d Hz\n",
-			cfg->rate);
-		return prrate;
-	}
-
 	if (cfg->rate % ctrl->a_framer->superfreq) {
 		/*
 		 * data rate not exactly multiple of super frame,
@@ -254,7 +246,7 @@ int slim_stream_prepare(struct slim_stream_runtime *rt,
 		port = &rt->ports[i];
 		port->state = SLIM_PORT_DISCONNECTED;
 		port->id = port_id;
-		port->ch.prrate = prrate;
+		port->ch.prrate = slim_get_prate_code(cfg->rate);
 		port->ch.id = cfg->chs[i];
 		port->ch.data_fmt = SLIM_CH_DATA_FMT_NOT_DEFINED;
 		port->ch.aux_fmt = SLIM_CH_AUX_FMT_NOT_APPLICABLE;
@@ -374,13 +366,17 @@ int slim_stream_enable(struct slim_stream_runtime *stream)
 
 	ctrl = stream->dev->ctrl;
 	if (ctrl->enable_stream) {
+		mutex_lock(&ctrl->stream_lock);
 		ret = ctrl->enable_stream(stream);
-		if (ret)
+		if (ret) {
+			mutex_unlock(&ctrl->stream_lock);
 			return ret;
+		}
 
 		for (i = 0; i < stream->num_ports; i++)
 			stream->ports[i].ch.state = SLIM_CH_STATE_ACTIVE;
 
+		mutex_unlock(&ctrl->stream_lock);
 		return ret;
 	}
 
@@ -435,8 +431,15 @@ int slim_stream_disable(struct slim_stream_runtime *stream)
 		return -EINVAL;
 
 	ctrl = stream->dev->ctrl;
-	if (ctrl->disable_stream)
-		ctrl->disable_stream(stream);
+	if (ctrl->disable_stream) {
+		mutex_lock(&ctrl->stream_lock);
+		ret = ctrl->disable_stream(stream);
+		if (ret) {
+			mutex_unlock(&ctrl->stream_lock);
+			return ret;
+		}
+		mutex_unlock(&ctrl->stream_lock);
+	}
 
 	ret = slim_do_transfer(ctrl, &txn);
 	if (ret)
@@ -484,6 +487,50 @@ int slim_stream_unprepare(struct slim_stream_runtime *stream)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(slim_stream_unprepare);
+
+/**
+ * slim_stream_unprepare_disconnect_port() - Un-prepare and disconnect
+ * selected SLIMbus Stream ports
+ *
+ * @stream: instance of slim stream runtime to unprepare
+ * @disconnect_ports: disconnect the ports of the stream
+ * @is_session_completed: free the ports allocated to the stream
+ *
+ * This API will disconnect all the ports and un allocate all the ports and
+ * channels associated with SLIMbus stream.
+ *
+ * Return: zero on success and error code on failure. From ASoC DPCM framework,
+ * this state is linked to trigger() stop operation.
+ */
+int slim_stream_unprepare_disconnect_port(struct slim_stream_runtime *stream,
+					  bool disconnect_ports, bool is_session_completed)
+{
+	int i;
+
+	if (!stream) {
+		pr_err("%s: Stream is NULL, Check from client side\n", __func__);
+		return -EINVAL;
+	}
+
+	if (!stream->ports || !stream->num_ports) {
+		pr_err("%s: Stream port is NULL %d\n", __func__, stream->num_ports);
+		return -EINVAL;
+	}
+
+	if (disconnect_ports) {
+		for (i = 0; i < stream->num_ports; i++)
+			slim_disconnect_port(stream, &stream->ports[i]);
+	}
+
+	if (is_session_completed) {
+		kfree(stream->ports);
+		stream->ports = NULL;
+		stream->num_ports = 0;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(slim_stream_unprepare_disconnect_port);
 
 /**
  * slim_stream_free() - Free a SLIMbus Stream

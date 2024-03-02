@@ -3,6 +3,15 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+/{
+	/* Add overlay for firmware node containing qcom_scm in sm8550.dtsi */
+	firmware {
+		qcom_smcinvoke {
+			compatible = "qcom,smcinvoke";
+		};
+	};
+};
+
 &soc {
 	wdog_gh: qcom,wdt_gh {
 		compatible = "qcom,gh-watchdog";
@@ -16,4 +25,21 @@
 		hyplog-address-offset = <0x410>;
 		hyplog-size-offset = <0x414>;
 	};
+
+	qcom,mem-buf {
+		compatible = "qcom,mem-buf";
+		qcom,mem-buf-capabilities = "supplier";
+		qcom,vmid = <3>;
+	};
+
+	qcom,mem-buf-msgq {
+		compatible = "qcom,mem-buf-msgq";
+	};
+
+	qcom,secure-buffer {
+		compatible = "qcom,secure-buffer";
+		qcom,vmid-cp-camera-preview-ro;
+	};
 };
+
+#include "qcm8550-dma-heaps.dtsi"
