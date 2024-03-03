@@ -83,6 +83,9 @@ static int ttyport_write_buf(struct serdev_controller *ctrl, const unsigned char
 		return 0;
 
 	set_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
+	if((data[1] == 0x00) && (data[2] == 0xfc) && (data[4] == 0x28))
+		printk(" test ttyport_write_buf- patch config cmd:%x\n",data[4]);
+
 	return tty->ops->write(serport->tty, data, len);
 }
 
