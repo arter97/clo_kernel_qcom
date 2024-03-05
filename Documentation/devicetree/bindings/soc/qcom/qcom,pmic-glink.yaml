@@ -47,6 +47,12 @@ properties:
       The array should contain a gpio entry for each PMIC Glink connector, in reg order.
       It is defined that GPIO active level means "CC2" or Reversed/Flipped orientation.
 
+  qcom,thermal-mitigation:
+    description: Array of fast charge current limit values for different system thermal mitigation
+      levels. This should be a flat array that denotes the maximum charging current (in uA) for
+      each thermal level. Elements should be defined in such a way that the next element is always
+      less than or equal to the current element (descending order).
+
 patternProperties:
   '^connector@\d$':
     $ref: /schemas/connector/usb-connector.yaml#
@@ -68,6 +74,21 @@ allOf:
     then:
       properties:
         orientation-gpios: false
+
+allOf:
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              enum:
+                - qcom,sm8350-pmic-glink
+                - qcom,sm8450-pmic-glink
+                - qcom,sm8550-pmic-glink
+                - qcom,sm8650-pmic-glink
+    then:
+      properties:
+        qcom,thermal-mitigation: false
 
 additionalProperties: false
 
