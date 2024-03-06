@@ -99,6 +99,8 @@ soc/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/vexpress-update-6.9
 	rockchips/drivers1
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v6.9-rockchip-drivers1
+	qcom/dt-2
+		https://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-for-6.9-2
 
 soc/drivers
 	mediatek/soc-drivers
@@ -129,6 +131,8 @@ soc/drivers
 		https://git.kernel.org/pub/scm/linux/kernel/git/krzk/linux-mem-ctrl tags/memory-controller-drv-6.9-2
 	patch
 		tee: make tee_bus_type const
+	qcom/drivers-2
+		https://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-drivers-for-6.9-2
 
 soc/defconfig
 	patch
@@ -157,6 +161,8 @@ soc/late
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v6.9/dt-warnings-signed
 	drivers/reset
 		git://git.pengutronix.de/pza/linux tags/reset-for-v6.9
+	riscv/dt
+		https://git.kernel.org/pub/scm/linux/kernel/git/conor/linux tags/riscv-dt-for-v6.9
 
 arm/fixes
 	<no branch> (cbec657208bdd4bff4ff31cac5924aa18817027c)
@@ -169,4 +175,8 @@ arm/fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-6.8-arm64-dt
 	<no branch> (95915ba4b987cf2b222b0f251280228a1ff977ac)
 		https://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-fix-for-v6.8
+	<no branch> (4f423c4cbe26d79d8974936eb01e0d6574c5d2ac)
+		https://git.kernel.org/pub/scm/linux/kernel/git/qcom/linux tags/qcom-arm64-fixes-for-6.8-2
+	<no branch> (af1e0a7d39f98c0dea1b186a76fcee7da6a5f7bc)
+		https://git.kernel.org/pub/scm/linux/kernel/git/conor/linux tags/riscv-firmware-for-v6.9
 
