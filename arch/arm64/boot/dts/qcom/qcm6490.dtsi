@@ -15,6 +15,12 @@
 /delete-node/ &wlan_ce_mem;
 
 /{
+
+	psci {
+		mode-bootloader = <0x10001 0x2>;
+		mode-edl = <0 0x1>;
+	};
+
 	reserved-memory {
 		cdsp_secure_heap_mem: cdsp-secure-heap@81800000 {
 			reg = <0x0 0x81800000 0x0 0x1e00000>;
