@@ -129,6 +129,7 @@ static const struct ice_stats ice_gstrings_pf_stats[] = {
 	ICE_PF_STAT("rx_oversize.nic", stats.rx_oversize),
 	ICE_PF_STAT("rx_jabber.nic", stats.rx_jabber),
 	ICE_PF_STAT("rx_csum_bad.nic", hw_csum_rx_error),
+	ICE_PF_STAT("rx_eipe_error.nic", hw_rx_eipe_error),
 	ICE_PF_STAT("rx_dropped.nic", stats.eth.rx_discards),
 	ICE_PF_STAT("rx_crc_errors.nic", stats.crc_errors),
 	ICE_PF_STAT("illegal_bytes.nic", stats.illegal_bytes),
@@ -801,7 +802,7 @@ static int ice_lbtest_create_frame(struct ice_pf *pf, u8 **ret_data, u16 size)
 	if (!pf)
 		return -EINVAL;
 
-	data = devm_kzalloc(ice_pf_to_dev(pf), size, GFP_KERNEL);
+	data = kzalloc(size, GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
@@ -944,11 +945,9 @@ static u64 ice_loopback_test(struct net_device *netdev)
 	int num_frames, valid_frames;
 	struct ice_tx_ring *tx_ring;
 	struct ice_rx_ring *rx_ring;
-	struct device *dev;
-	u8 *tx_frame;
+	u8 *tx_frame __free(kfree);
 	int i;
 
-	dev = ice_pf_to_dev(pf);
 	netdev_info(netdev, "loopback test\n");
 
 	test_vsi = ice_lb_vsi_setup(pf, pf->hw.port_info);
@@ -993,7 +992,7 @@ static u64 ice_loopback_test(struct net_device *netdev)
 	for (i = 0; i < num_frames; i++) {
 		if (ice_diag_send(tx_ring, tx_frame, ICE_LB_FRAME_SIZE)) {
 			ret = 8;
-			goto lbtest_free_frame;
+			goto remove_mac_filters;
 		}
 	}
 
@@ -1003,8 +1002,6 @@ static u64 ice_loopback_test(struct net_device *netdev)
 	else if (valid_frames != num_frames)
 		ret = 10;
 
-lbtest_free_frame:
-	devm_kfree(dev, tx_frame);
 remove_mac_filters:
 	if (ice_fltr_remove_mac(test_vsi, broadcast, ICE_FWD_TO_VSI))
 		netdev_err(netdev, "Could not remove MAC filter for the test VSI\n");
@@ -3360,7 +3357,7 @@ ice_get_ts_info(struct net_device *dev, struct ethtool_ts_info *info)
 	struct ice_pf *pf = ice_netdev_to_pf(dev);
 
 	/* only report timestamping if PTP is enabled */
-	if (!test_bit(ICE_FLAG_PTP, pf->flags))
+	if (pf->ptp.state != ICE_PTP_READY)
 		return ethtool_op_get_ts_info(dev, info);
 
 	info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
