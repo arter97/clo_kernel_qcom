@@ -29,6 +29,7 @@
 #include <linux/uaccess.h>
 #include <linux/termios.h>
 #include <linux/msm_smd_pkt.h>
+#include <linux/rpmsg/qcom_smd.h>
 
 #define MODULE_NAME "msm_smdpkt"
 #define DEVICE_NAME "smdpkt"
@@ -144,6 +145,7 @@ static int smd_pkt_rpdev_probe(struct rpmsg_device *rpdev)
 
 	mutex_lock(&smd_pkt_devp->lock);
 	smd_pkt_devp->rpdev = rpdev;
+	qcom_smd_register_signals_cb(rpdev->ept, smd_pkt_rpdev_sigs);
 	mutex_unlock(&smd_pkt_devp->lock);
 	dev_set_drvdata(&rpdev->dev, smd_pkt_devp);
 	complete_all(&smd_pkt_devp->ch_open);
@@ -177,24 +179,23 @@ static int smd_pkt_rpdev_cb(struct rpmsg_device *rpdev, void *buf, int len,
 
 	return 0;
 }
-/**
- *static int smd_pkt_rpdev_sigs(struct rpmsg_device *rpdev, void *priv, u32 old, u32 new)
- *{
- *	struct device_driver *drv = rpdev->dev.driver;
- *	struct rpmsg_driver *rpdrv = drv_to_rpdrv(drv);
- *	struct smd_pkt_dev *smd_pkt_devp = rpdrv_to_smd_pkt_devp(rpdrv);
- *	unsigned long flags;
 
- *	spin_lock_irqsave(&smd_pkt_devp->queue_lock, flags);
- *	smd_pkt_devp->sig_change = true;
- *	spin_unlock_irqrestore(&smd_pkt_devp->queue_lock, flags);
+static int smd_pkt_rpdev_sigs(struct rpmsg_device *rpdev, void *priv, u32 old, u32 new)
+{
+	struct device_driver *drv = rpdev->dev.driver;
+	struct rpmsg_driver *rpdrv = drv_to_rpdrv(drv);
+	struct smd_pkt_dev *smd_pkt_devp = rpdrv_to_smd_pkt_devp(rpdrv);
+	unsigned long flags;
 
-	//wake up any blocking processes, waiting for new data
- *	wake_up_interruptible(&smd_pkt_devp->readq);
- *
- *	return 0;
- *}
- */
+	spin_lock_irqsave(&smd_pkt_devp->queue_lock, flags);
+	smd_pkt_devp->sig_change = true;
+	spin_unlock_irqrestore(&smd_pkt_devp->queue_lock, flags);
+
+	/* wake up any blocking processes, waiting for new data */
+	wake_up_interruptible(&smd_pkt_devp->readq);
+
+	return 0;
+}
 
 /**
  * smd_pkt_tiocmset() - set the signals for smd_pkt device
@@ -206,39 +207,34 @@ static int smd_pkt_rpdev_cb(struct rpmsg_device *rpdev, void *buf, int len,
  * when userspace client do a ioctl() system call with TIOCMBIS,
  * TIOCMBIC and TICOMSET.
  */
-
-/**
- * static int smd_pkt_tiocmset(struct smd_pkt_dev *smd_pkt_devp, unsigned int cmd,
+static int smd_pkt_tiocmset(struct smd_pkt_dev *smd_pkt_devp, unsigned int cmd,
 				int __user *arg)
- *{
- *	u32 set, clear, val;
- *	int ret;
+{
+	u32 set, clear, val;
+	int ret;
 
- *	ret = get_user(val, arg);
- *	if (ret)
- *		return ret;
+	ret = get_user(val, arg);
+	if (ret)
+		return ret;
+	set = clear = 0;
+	switch (cmd) {
+	case TIOCMBIS:
+		set = val;
+		break;
+	case TIOCMBIC:
+		clear = val;
+		break;
+	case TIOCMSET:
+		set = val;
+		clear = ~val;
+		break;
+	}
 
- *	set = clear = 0;
- *	switch (cmd) {
- *	case TIOCMBIS:
- *		set = val;
- *		break;
- *	case TIOCMBIC:
- *		clear = val;
- *		break;
- *	case TIOCMSET:
- *		set = val;
- *		clear = ~val;
- *		break;
- *	}
-
- *	set &= TIOCM_DTR | TIOCM_RTS | TIOCM_CD | TIOCM_RI;
- *	clear &= TIOCM_DTR | TIOCM_RTS | TIOCM_CD | TIOCM_RI;
- *	SMD_PKT_INFO("set[0x%x] clear[0x%x]\n", set, clear);
- *	return rpmsg_set_signals(smd_pkt_devp->rpdev->ept, set, clear);
- *
- * }
- */
+	set &= TIOCM_DTR | TIOCM_RTS | TIOCM_CD | TIOCM_RI;
+	clear &= TIOCM_DTR | TIOCM_RTS | TIOCM_CD | TIOCM_RI;
+	SMD_PKT_INFO("set[0x%x] clear[0x%x]\n", set, clear);
+	return qcom_smd_set_sigs(smd_pkt_devp->rpdev->ept, set, clear);
+}
 
 /**
  * smd_pkt_ioctl() - ioctl() syscall for the smd_pkt device
@@ -279,15 +275,14 @@ static long smd_pkt_ioctl(struct file *file, unsigned int cmd,
 		smd_pkt_devp->sig_change = false;
 		spin_unlock_irqrestore(&smd_pkt_devp->queue_lock, flags);
 
-/**		ret = rpmsg_get_signals(smd_pkt_devp->rpdev->ept);
- *		if (ret >= 0)
- *			ret = put_user(ret, (int __user *)arg);
- */
+		ret = qcom_smd_get_sigs(smd_pkt_devp->rpdev->ept);
+		if (ret >= 0)
+			ret = put_user(ret, (int __user *)arg);
 		break;
 	case TIOCMSET:
 	case TIOCMBIS:
 	case TIOCMBIC:
-//		ret = smd_pkt_tiocmset(smd_pkt_devp, cmd, (int __user *)arg);
+		ret = smd_pkt_tiocmset(smd_pkt_devp, cmd, (int __user *)arg);
 		break;
 	case SMD_PKT_IOCTL_QUEUE_RX_INTENT:
 		/* Return success to not break userspace client logic */
@@ -688,7 +683,6 @@ static int smd_pkt_init_rpmsg(struct smd_pkt_dev *smd_pkt_devp)
 	rpdrv->probe = smd_pkt_rpdev_probe;
 	rpdrv->remove = smd_pkt_rpdev_remove;
 	rpdrv->callback = smd_pkt_rpdev_cb;
-//	rpdrv->signals = smd_pkt_rpdev_sigs;
 	rpdrv->id_table = match;
 	rpdrv->drv.name = drv_name;
 
