@@ -104,14 +104,14 @@ void gb_debugfs_init(void);
 void gb_debugfs_cleanup(void);
 struct dentry *gb_debugfs_get(void);
 
-extern struct bus_type greybus_bus_type;
+extern const struct bus_type greybus_bus_type;
 
-extern struct device_type greybus_hd_type;
-extern struct device_type greybus_module_type;
-extern struct device_type greybus_interface_type;
-extern struct device_type greybus_control_type;
-extern struct device_type greybus_bundle_type;
-extern struct device_type greybus_svc_type;
+extern const struct device_type greybus_hd_type;
+extern const struct device_type greybus_module_type;
+extern const struct device_type greybus_interface_type;
+extern const struct device_type greybus_control_type;
+extern const struct device_type greybus_bundle_type;
+extern const struct device_type greybus_svc_type;
 
 static inline int is_gb_host_device(const struct device *dev)
 {
