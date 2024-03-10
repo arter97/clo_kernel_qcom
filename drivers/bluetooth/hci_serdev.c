@@ -70,9 +70,6 @@ static void hci_uart_write_work(struct work_struct *work)
 		while ((skb = hci_uart_dequeue(hu))) {
 			int len;
 
-			if((skb->data[1] == 0x00) && (skb->data[2] == 0xfc) && (skb->data[4] == 0x28))
-				printk(" test hci_uart_write_work- patch config cmd:%x\n",skb->data[4]);
-
 			len = serdev_device_write_buf(serdev,
 						      skb->data, skb->len);
 			hdev->stat.byte_tx += len;

@@ -149,7 +149,7 @@ static int qca_send_patch_config_cmd(struct hci_dev *hdev)
 	struct edl_event_hdr *edl;
 	int err;
 
-	bt_dev_err(hdev, "QCA Patch config");
+	bt_dev_dbg(hdev, "QCA Patch config");
 
 	skb = __hci_cmd_sync_ev(hdev, EDL_PATCH_CMD_OPCODE, sizeof(cmd),
 				cmd, HCI_EV_VENDOR, HCI_INIT_TIMEOUT);
@@ -181,7 +181,6 @@ static int qca_send_patch_config_cmd(struct hci_dev *hdev)
 
 	err = 0;
 
-    bt_dev_err(hdev, "QCA Patch config- completed");
 out:
 	kfree_skb(skb);
 	return err;
@@ -584,11 +583,11 @@ int qca_uart_setup(struct hci_dev *hdev, uint8_t baudrate,
 	u8 rom_ver = 0;
 	u32 soc_ver;
 
-	bt_dev_err(hdev, "QCA setup on UART");
+	bt_dev_dbg(hdev, "QCA setup on UART");
 
 	soc_ver = get_soc_ver(ver.soc_id, ver.rom_ver);
 
-	bt_dev_err(hdev, "QCA controller version 0x%08x", soc_ver);
+	bt_dev_info(hdev, "QCA controller version 0x%08x", soc_ver);
 
 	config.user_baud_rate = baudrate;
 

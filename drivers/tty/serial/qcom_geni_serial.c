@@ -623,18 +623,7 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
 	struct qcom_geni_serial_port *port = to_dev_port(uport);
 	struct circ_buf *xmit = &uport->state->xmit;
 	unsigned int xmit_size;
-	char *cmd_test = (char *)&xmit->buf[xmit->tail];
 	int ret;
-
-	//printk(" test qcom_geni_serial_start_tx_dma: %x %x %x %x %x \n",cmd_test[0],cmd_test[1],cmd_test[2],cmd_test[3], cmd_test[4]);
-	if((cmd_test[1] == 0x00) && (cmd_test[2] == 0xfc) )
-	{
-		if(cmd_test[4] == 0x28)
-		{
-			printk("qcom_geni_serial_start_tx_dma-qca_send_patch_config_cmd - %x\n",cmd_test[4]);
-		}
-		//printk("qcom_geni_serial_start_tx_dma- qca_send_patch_config_cmd -fc00 \n");
-	}
 
 	if (port->tx_dma_addr)
 		return;
