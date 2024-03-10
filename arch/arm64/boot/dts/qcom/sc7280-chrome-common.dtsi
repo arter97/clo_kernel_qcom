@@ -63,6 +63,26 @@
 	domain-idle-states = <&CLUSTER_SLEEP_0>;
 };
 
+&lpass_aon {
+	status = "okay";
+};
+
+&lpass_core {
+	status = "okay";
+};
+
+&lpass_hm {
+	status = "okay";
+};
+
+&lpasscc {
+	status = "okay";
+};
+
+&pdc_reset {
+	status = "okay";
+};
+
 /* The PMIC PON code isn't compatible w/ how Chrome EC/BIOS handle things. */
 &pmk8350_pon {
 	status = "disabled";
@@ -107,6 +127,10 @@
 	video-firmware {
 		iommus = <&apps_smmu 0x21a2 0x0>;
 	};
+};
+
+&watchdog {
+	status = "okay";
 };
 
 &wifi {

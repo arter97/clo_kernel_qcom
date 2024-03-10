@@ -117,7 +117,6 @@ description: |
         qcp
         qrd
         rb2
-        rb5gen2-hdk
         ride
         sbc
         x100
@@ -144,7 +143,7 @@ description: |
   There are many devices in the list below that run the standard ChromeOS
   bootloader setup and use the open source depthcharge bootloader to boot the
   OS. These devices do not use the scheme described above. For details, see:
-  https://docs.kernel.org/arm/google/chromebook-boot-flow.html
+  https://docs.kernel.org/arch/arm/google/chromebook-boot-flow.html
 
 properties:
   $nodename:
@@ -404,6 +403,12 @@ properties:
               - fairphone,fp5
               - qcom,qcm6490-addons-idp
               - qcom,qcm6490-idp
+              - qcom,qcs5430-fp1-addons-rb3gen2
+              - qcom,qcs5430-fp1-addons-rb3gen2-vision-mezz
+              - qcom,qcs5430-fp1p5-addons-rb3gen2
+              - qcom,qcs5430-fp1p5-addons-rb3gen2-vision-mezz
+              - qcom,qcs5430-fp2-addons-rb3gen2
+              - qcom,qcs5430-fp2-addons-rb3gen2-vision-mezz
               - qcom,qcs6490-addons-rb3gen2
               - qcom,qcs6490-addons-rb3gen2-ia-mezz
               - qcom,qcs6490-addons-rb3gen2-ptz-mezz
@@ -411,6 +416,7 @@ properties:
               - qcom,qcs6490-addons-rb3gen2-vision-mezz
               - qcom,qcs6490-rb3gen2
           - const: qcom,qcm6490
+          - const: qcom,qcs5430
 
       - description: Qualcomm Technologies, Inc. Distributed Unit 1000 platform
         items:
@@ -893,10 +899,9 @@ properties:
 
       - items:
           - enum:
-              - qcom,qcs8550-rb5gen2-hdk
-          - const: qcom,qcs8550-rb5gen2
+              - qcom,qcs8550-rb5gen2
+          - const: qcom,qcs8550-rb5gen2-som
           - const: qcom,qcs8550
-          - const: qcom,qcm8550
           - const: qcom,sm8550
 
       - items:

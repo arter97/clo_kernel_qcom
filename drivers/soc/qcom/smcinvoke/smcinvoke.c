@@ -24,7 +24,6 @@
 #include <linux/of_platform.h>
 #include <linux/firmware.h>
 #include <linux/firmware/qcom/qcom_scm.h>
-#include <linux/firmware/qcom/qcom_scm_addon.h>
 #include <linux/freezer.h>
 #include <linux/ratelimit.h>
 #include <linux/qtee_shmbridge.h>
@@ -3166,6 +3165,10 @@ static int smcinvoke_probe(struct platform_device *pdev)
 	unsigned int baseminor = 0;
 	unsigned int count = 1;
 	int rc = 0;
+
+	/* Defer if qcom_scm is not available */
+	if (!qcom_scm_is_available())
+		return dev_err_probe(&pdev->dev, -EPROBE_DEFER, "qcom_scm is not up!\n");
 
 	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc) {
