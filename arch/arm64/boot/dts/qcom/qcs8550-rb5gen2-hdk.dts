@@ -5,15 +5,15 @@
 
 /dts-v1/;
 
-#include "qcs8550-rb5gen2-som.dtsi"
+#include "qcs8550-rb5gen2.dtsi"
 #include "pm8010.dtsi"
 #include "pmr735d_a.dtsi"
 #include "pmr735d_b.dtsi"
 
 / {
-	model = "Qualcomm Technologies, Inc. QCS8550 RB5Gen2";
-	compatible = "qcom,qcs8550-rb5gen2", "qcom,qcs8550-rb5gen2-som",
-			"qcom,qcs8550", "qcom,sm8550";
+	model = "Qualcomm Technologies, Inc. QCS8550 RB5Gen2 HDK";
+	compatible = "qcom,qcs8550-rb5gen2-hdk", "qcom,qcs8550-rb5gen2",
+			"qcom,qcs8550", "qcom,qcm8550", "qcom,sm8550";
 
 	qcom,msm-id = <603 0x20000>;
 	qcom,board-id = <0x1001f 2>;
