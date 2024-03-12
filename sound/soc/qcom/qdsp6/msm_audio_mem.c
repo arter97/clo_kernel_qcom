@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -23,9 +23,9 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/ioctl.h>
 #include <linux/platform_device.h>
-#include <msm_audio_mem.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <soc/qcom/secure_buffer.h>
+#include "msm_audio_mem.h"
 
 MODULE_IMPORT_NS(DMA_BUF);
 
