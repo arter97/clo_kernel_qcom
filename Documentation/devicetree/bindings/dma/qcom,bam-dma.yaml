@@ -78,7 +78,16 @@ properties:
       initialized by the local processor.
 
   reg:
-    maxItems: 1
+    maxItems: 2
+
+optional properties:
+
+  reg-name:
+    description: Register region name(s) referenced in reg above
+         Required register resource entries are:
+         "bam": Physical address of controller register blocks
+         "bam_remote_mem": Physical address of LPASS memory
+    maxItems: 2
 
 required:
   - compatible
