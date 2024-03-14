@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define QCOM_SCM_MP_CP_SMMU_APERTURE_ID         0x1b
@@ -546,27 +546,6 @@ int qcom_scm_sec_wdog_trigger(void)
 	return ret ? : res.result[0];
 }
 EXPORT_SYMBOL_GPL(qcom_scm_sec_wdog_trigger);
-
-/**
- * qcom_scm_disable_sdi() - Disable SDI
- */
-void qcom_scm_disable_sdi(void)
-{
-	int ret;
-	struct qcom_scm_desc desc = {
-		.svc = QCOM_SCM_SVC_BOOT,
-		.cmd = QCOM_SCM_BOOT_WDOG_DEBUG_PART,
-		.owner = ARM_SMCCC_OWNER_SIP,
-		.args[0] = 1,
-		.args[1] = 0,
-		.arginfo = QCOM_SCM_ARGS(2),
-	};
-
-	ret = qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
-	if (ret)
-		pr_err("Failed to disable secure wdog debug: %d\n", ret);
-}
-EXPORT_SYMBOL_GPL(qcom_scm_disable_sdi);
 
 /**
  * qcom_scm_spin_cpu(void) - spin on cpu
