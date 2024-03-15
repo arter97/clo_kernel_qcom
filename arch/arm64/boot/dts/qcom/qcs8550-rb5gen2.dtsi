@@ -408,6 +408,10 @@
 	};
 };
 
+&iris {
+	status = "okay";
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/qcs8550/adsp.mdt",
 			"qcom/qcs8550/adsp_dtb.mdt";
