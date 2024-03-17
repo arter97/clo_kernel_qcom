@@ -15,9 +15,9 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/termios.h>
-#include <msm_audio_mem.h>
 #include <linux/soc/qcom/apr.h>
 #include <dt-bindings/soc/qcom,gpr.h>
+#include "msm_audio_mem.h"
 #include "q6apm.h"
 
 #define APM_CMD_SHARED_MEM_MAP_REGIONS          0x0100100C

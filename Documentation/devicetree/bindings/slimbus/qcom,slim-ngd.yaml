@@ -23,7 +23,7 @@ properties:
       - qcom,slim-ngd-v2.1.0        # for SDM845
 
   reg:
-    maxItems: 1
+    maxItems: 2
 
   "#address-cells":
     const: 1
@@ -44,6 +44,15 @@ properties:
 
   iommus:
     maxItems: 1
+
+optional properties:
+
+  reg-name:
+    description: Register region name(s) referenced in reg above
+         Required register resource entries are:
+         "ctrl": Physical address of controller register blocks
+         "slimbus_remote_mem": Physical address of LPASS memory
+    maxItems: 2
 
 patternProperties:
   "^slim@[0-9a-f]+$":

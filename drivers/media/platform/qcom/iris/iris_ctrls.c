@@ -496,6 +496,8 @@ int iris_init_instance_caps(struct iris_core *core)
 		}
 	}
 
+	check_bit = 0;
+
 	for (; i < codecs_count; i++) {
 		while (check_bit < (sizeof(dec_valid_codecs) * 8)) {
 			if (dec_valid_codecs & BIT(check_bit)) {
@@ -537,7 +539,8 @@ int get_inst_capability(struct iris_inst *inst)
 	codecs_count = core->enc_codecs_count + core->dec_codecs_count;
 
 	for (i = 0; i < codecs_count; i++) {
-		if (core->inst_caps[i].codec == inst->codec) {
+		if (core->inst_caps[i].domain == inst->domain &&
+			core->inst_caps[i].codec == inst->codec) {
 			memcpy(&inst->cap[0], &core->inst_caps[i].cap[0],
 			       (INST_CAP_MAX + 1) * sizeof(struct plat_inst_cap));
 		}
@@ -1456,7 +1459,7 @@ exit:
 int adjust_b_frame(struct iris_inst *inst, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value, enh_layer_count = -1;
-	const u32 max_bframe_size = 7;
+	const u32 max_bframe_size = inst->cap[B_FRAME].max;
 
 	adjusted_value = ctrl ? ctrl->val : inst->cap[B_FRAME].value;
 

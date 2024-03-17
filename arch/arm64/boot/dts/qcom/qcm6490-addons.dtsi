@@ -481,6 +481,17 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 		};
+
+		sleepstate_smp2p_in: qcom,sleepstate-in {
+			qcom,entry-name = "sleepstate_see";
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		sleepstate_smp2p_out: sleepstate-out {
+			qcom,entry-name = "sleepstate";
+			#qcom,smem-state-cells = <1>;
+		};
 	};
 
 	smp2p-cdsp {
@@ -804,6 +815,37 @@
 		};
 	};
 
+	tgu@6b0e000 {
+		compatible = "arm,primecell", "qcom,coresight-tgu";
+		arm,primecell-periphid = <0x000bb999>;
+		reg = <0x0 0x06b0e000 0x0 0x1000>;
+		device-name = "tgu_ipcb";
+
+		tgu-steps = <3>;
+		tgu-conditions = <4>;
+		tgu-regs = <4>;
+		tgu-timer-counters = <8>;
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+	};
+
+	swao_csr: csr@6b0f000 {
+		compatible = "qcom,coresight-csr";
+		reg = <0x0 0x06b0f000 0x0 0x1000>,
+		      <0x0 0x06b0f0f8 0x0 0x50>;
+		reg-names = "csr-base", "msr-base";
+
+		device-name = "swao_csr";
+		qcom,timestamp-support;
+		qcom,msr-support;
+
+		clocks = <&aoss_qmp>;
+		clock-names = "apb_pclk";
+
+		qcom,blk-size = <1>;
+	};
+
 	funnel@6b44000 {
 		compatible = "arm,coresight-static-funnel";
 		coresight-name = "coresight-funnel-lpass_lpi";
@@ -887,7 +929,9 @@
 		};
 	};
 
-	msm_gpu: qcom,kgsl-3d0@3d00000 { };
+	msm_gpu: qcom,kgsl-3d0@3d00000 {
+		#cooling-cells = <2>;
+	};
 
 	msm_stub_codec: msm-stub-codec {
 		compatible = "qcom,msm-stub-codec";
@@ -923,17 +967,6 @@
 		compatible = "qcom,smp2p-interrupt-rdbg-5-out";
 		qcom,smem-states = <&smp2p_rdbg5_out 0>;
 		qcom,smem-state-names = "rdbg-smp2p-out";
-	};
-
-	sleepstate_smp2p_in: qcom,sleepstate-in {
-		qcom,entry-name = "sleepstate_see";
-		interrupt-controller;
-		#interrupt-cells = <2>;
-	};
-
-	sleepstate_smp2p_out: sleepstate-out {
-		qcom,entry-name = "sleepstate";
-		#qcom,smem-state-cells = <1>;
 	};
 
 	qcom,smp2p_sleepstate {
@@ -994,14 +1027,11 @@
 		};
 	};
 
+#ifndef QCOM_KVM_ENABLED
 	watchdog@17c10000 {
 		status = "disabled";
 	};
-
-	wdog_gh: qcom,wdt_gh {
-		compatible = "qcom,gh-watchdog";
-		interrupts = <0 0 IRQ_TYPE_LEVEL_HIGH>;
-	};
+#endif
 
 	wpss-etm0 {
 		compatible = "qcom,coresight-remote-etm";
@@ -1069,6 +1099,7 @@
 	};
 
 	etr@6048000 {
+		qcom,sw-usb;
 		coresight-csr = <&csr>;
 		interrupts = <GIC_SPI 270 IRQ_TYPE_EDGE_RISING>;
 		interrupt-names = "byte-cntr-irq";
