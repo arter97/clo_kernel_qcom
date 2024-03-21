@@ -109,7 +109,10 @@ static inline bool br_multicast_router(const struct net_device *dev)
 	return false;
 }
 #endif
-
+#ifdef CONFIG_ENABLE_SFE
+extern struct net_device *br_port_dev_get(struct net_device *dev,
+						unsigned char *addr);
+#endif
 #if IS_ENABLED(CONFIG_BRIDGE) && IS_ENABLED(CONFIG_BRIDGE_VLAN_FILTERING)
 bool br_vlan_enabled(const struct net_device *dev);
 int br_vlan_get_pvid(const struct net_device *dev, u16 *p_pvid);

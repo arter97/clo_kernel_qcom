@@ -4732,6 +4732,12 @@ static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
 	return rxqueue;
 }
 
+#ifdef CONFIG_ENABLE_SFE
+int (*athrs_fast_nat_recv)(struct sk_buff *skb,
+			   struct packet_type *pt_temp) __rcu __read_mostly;
+EXPORT_SYMBOL(athrs_fast_nat_recv);
+#endif
+
 u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
 			     struct bpf_prog *xdp_prog)
 {

@@ -33,6 +33,15 @@ config SPS_SUPPORT_NDP_BAM
 	  to do the actual data transfer themselves, instead of the
 	  BAM.
 
+config QGKI
+	bool "Enable for QGKI or debug variant"
+	help
+	  When this flag is enabled, it is safe to assume that the build
+	  is a Non GKI build. It can be either QGKI build or a debug
+	  build. This does not differentiate a QGKI and a debug build.
+	  This flag is absent if the build is a GKI build. If this flag is
+	  enabled, all the ABI compatibilities are not applicable
+
 config QCOM_AOSS_QMP
 	tristate "Qualcomm AOSS Driver"
 	depends on ARCH_QCOM || COMPILE_TEST

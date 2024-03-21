@@ -187,6 +187,11 @@ static void nf_conntrack_all_lock(void)
 	}
 }
 
+#ifdef CONFIG_ENABLE_SFE
+void (*delete_sfe_entry)(struct nf_conn *ct) __rcu __read_mostly;
+EXPORT_SYMBOL(delete_sfe_entry);
+#endif
+
 static void nf_conntrack_all_unlock(void)
 	__releases(&nf_conntrack_locks_all_lock)
 {
