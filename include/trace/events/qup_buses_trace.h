@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #undef TRACE_SYSTEM
@@ -98,6 +98,13 @@ DEFINE_EVENT(serial_transmit_data, serial_transmit_data_rx,
 	TP_PROTO(struct device *dev, char *string, int size),
 
 	TP_ARGS(dev, string, size)
+);
+
+DEFINE_EVENT(buses_info, spi_info,
+
+	TP_PROTO(struct device *dev, const char *string1, char *string2),
+
+	TP_ARGS(dev, string1, string2)
 );
 
 #endif /* _TRACE_QUP_BUSES_TRACE_H */
