@@ -166,6 +166,15 @@ config QCOM_DEVFREQ_ICC
 	  agnostic interface to so that some of the devfreq governors can be
 	  shared across SoCs.
 
+config QCOM_BIMC_BWMON
+	tristate "QCOM BIMC Bandwidth monitor hardware"
+	depends on ARCH_QCOM
+	help
+	  The BIMC Bandwidth monitor hardware allows for monitoring the
+	  traffic coming from each master port connected to the BIMC. It also
+	  has the capability to raise an IRQ when the count exceeds a
+	  programmable limit.
+
 source "drivers/devfreq/event/Kconfig"
 
 endif # PM_DEVFREQ
