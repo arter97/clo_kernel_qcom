@@ -663,10 +663,10 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
 					    &rx_addr, &rx_buf, I2C_READ, gi2c->rx_c);
 			if (ret)
 				goto err;
+
+			dma_async_issue_pending(gi2c->rx_c);
 		}
 
-		if (msgs[i].flags & I2C_M_RD)
-			dma_async_issue_pending(gi2c->rx_c);
 		dma_async_issue_pending(gi2c->tx_c);
 
 		timeout = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
