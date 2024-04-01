@@ -139,6 +139,7 @@ enum EV_PRIORITY {
 	((0x0 << 20) | (0x0 << 16) | (link_rx << 11) | (bei << 10) | \
 	(ieot << 9) | (ieob << 8) | ch)
 #define NOOP_TRE (0x0 << 20 | 0x1 << 16)
+#define HID_CMD_TIMEOUT_MS (250)
 
 struct __packed gpi_error_log_entry {
 	u32 routine : 4;
@@ -412,13 +413,13 @@ static const struct {
 		GPI_CH_CMD_ENABLE_HID,
 		GPI_GPII_n_CH_CMD_ENABLE_HID,
 		CH_STATE_ENABLE_HID,
-		CMD_TIMEOUT_MS,
+		HID_CMD_TIMEOUT_MS,
 	},
 	{
 		GPI_CH_CMD_DISABLE_HID,
 		GPI_GPII_n_CH_CMD_DISABLE_HID,
 		CH_STATE_DISABLE_HID,
-		CMD_TIMEOUT_MS,
+		HID_CMD_TIMEOUT_MS,
 	},
 	{
 		GPI_EV_CMD_ALLOCATE,
@@ -655,6 +656,8 @@ static int gpi_ring_add_element(struct gpi_ring *ring, void **wp);
 static void gpi_process_events(struct gpii *gpii);
 static int gpi_start_chan(struct gpii_chan *gpii_chan);
 static void gpi_free_chan_desc(struct gpii_chan *gpii_chan);
+static int gpi_deep_sleep_exit_config(struct dma_chan *chan,
+				      struct dma_slave_config *config);
 
 static inline struct gpii_chan *to_gpii_chan(struct dma_chan *dma_chan)
 {
@@ -1062,6 +1065,7 @@ static void gpi_disable_interrupts(struct gpii *gpii)
 				    default_reg[i].shift,
 				    default_reg[i].val);
 	gpii->cntxt_type_irq_msk = 0;
+	free_irq(gpii->irq, gpii);
 	gpii->configured_irq = false;
 }
 
@@ -1176,9 +1180,8 @@ static int gpi_config_interrupts(struct gpii *gpii,
 		  (mask) ? 'T' : 'F');
 
 	if (!gpii->configured_irq) {
-		ret = devm_request_irq(gpii->gpi_dev->dev, gpii->irq,
-				       gpi_handle_irq, IRQF_TRIGGER_HIGH,
-				       gpii->label, gpii);
+		ret = request_irq(gpii->irq, gpi_handle_irq, IRQF_TRIGGER_HIGH,
+				  gpii->label, gpii);
 		if (ret < 0) {
 			GPII_CRITIC(gpii, GPI_DBG_COMMON,
 				    "error request irq:%d ret:%d\n",
@@ -1691,6 +1694,33 @@ int geni_gsi_ch_start(struct dma_chan *chan)
 EXPORT_SYMBOL_GPL(geni_gsi_ch_start);
 
 /*
+ * gpi_terminate_channel() - Stop gpi rx and tx channels and
+ *                           if fails do reset of the channels
+ * @chan: gsi channel handle
+ *
+ * Return: Returns success or failure
+ */
+int gpi_terminate_channel(struct gpii_chan *gpii_chan)
+{
+	struct gpii *gpii = gpii_chan->gpii;
+	int ret = 0;
+
+	mutex_lock(&gpii->ctrl_lock);
+	ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_STOP);
+	if (ret) {
+		GPII_ERR(gpii, gpii_chan->chid,
+			 "Error Stopping Chan:%d,resetting\n", ret);
+		/* If STOP cmd fails, send command to Reset the channel */
+		ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_RESET);
+		if (ret)
+			GPII_ERR(gpii, gpii_chan->chid,
+				 "error resetting channel:%d\n", ret);
+	}
+	mutex_unlock(&gpii->ctrl_lock);
+	return ret;
+}
+
+/*
  * geni_gsi_ch_disconenct_doorbell() - gsi channel commond to disconnect doorbell to GSI
  * @chan: gsi channel handle
  *
@@ -1700,39 +1730,47 @@ int geni_gsi_ch_disconnect_doorbell(struct dma_chan *chan)
 {
 	struct gpii_chan *gpii_chan = to_gpii_chan(chan);
 	struct gpii *gpii = gpii_chan->gpii;
-	int i, ret = 0;
+	int ret = 0;
+	bool error = false;
 
 	/*
 	 * Use asynchronous channel command 49 (see section 3.10.7) to dis-connect
 	 * io_6 input from GSI interrupt input.
 	 */
 	GPII_VERB(gpii, gpii_chan->chid, "Enter\n");
-	mutex_lock(&gpii->ctrl_lock);
 	ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_DISABLE_HID);
-	if (ret)
+	if (ret) {
 		GPII_ERR(gpii, gpii_chan->chid,
 			 "Error disable Chan:%d HID interrupt\n", ret);
-	for (i = 1; i >= 0 ; i--) {
-		gpii_chan = &gpii->gpii_chan[i];
-		GPII_INFO(gpii, gpii_chan->chid, "Stop chan:%d\n", i);
-		ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_STOP);
-		if (ret) {
-			GPII_ERR(gpii, gpii_chan->chid,
-				 "Error Stopping Chan:%d resetting\n", ret);
-			/* If STOP cmd fails, send command to Stop the channel */
-			ret = gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_RESET);
-			if (ret) {
-				GPII_ERR(gpii, gpii_chan->chid,
-					 "error resetting channel:%d\n", ret);
-				mutex_unlock(&gpii->ctrl_lock);
-				return ret;
-			}
-		}
+		error = true;
+		gpi_dump_debug_reg(gpii);
 	}
-	GPII_VERB(gpii, gpii_chan->chid, "Free chan desc\n");
+	/* Stop RX channel */
+	GPII_INFO(gpii, gpii_chan->chid, "Stop RX chan\n");
+	ret = gpi_terminate_channel(&gpii->gpii_chan[1]);
+	if (ret) {
+		GPII_ERR(gpii, gpii_chan->chid,
+			 "Error Stopping RX Chan:%d\n", ret);
+		error = true;
+		gpi_dump_debug_reg(gpii);
+	}
+
+	GPII_VERB(gpii, gpii_chan->chid, "Free RX chan desc\n");
 	gpi_free_chan_desc(&gpii->gpii_chan[1]);
-	mutex_unlock(&gpii->ctrl_lock);
+
+	/* Stop TX channel */
+	GPII_INFO(gpii, gpii_chan->chid, "Stop TX chan\n");
+	ret = gpi_terminate_channel(&gpii->gpii_chan[0]);
+	if (ret) {
+		GPII_ERR(gpii, gpii_chan->chid,
+			 "Error Stopping TX Chan:%d\n", ret);
+		error = true;
+		gpi_dump_debug_reg(gpii);
+	}
 	GPII_VERB(gpii, gpii_chan->chid, "End\n");
+	if (error)
+		return -EBUSY;
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(geni_gsi_ch_disconnect_doorbell);
@@ -3110,7 +3148,6 @@ static int gpi_pause(struct dma_chan *chan)
 		mutex_unlock(&gpii->ctrl_lock);
 		return -EINVAL;
 	}
-
 	rp = to_virtual(ev_ring, cntxt_rp);
 	local_rp = to_physical(ev_ring, ev_ring->rp);
 	if (!local_rp) {
@@ -3118,7 +3155,6 @@ static int gpi_pause(struct dma_chan *chan)
 		mutex_unlock(&gpii->ctrl_lock);
 		return -EINVAL;
 	}
-
 	rp1 = ev_ring->rp;
 
 	/* dump the event ring at the time of error */
@@ -3192,6 +3228,7 @@ static int gpi_resume(struct dma_chan *chan)
 {
 	struct gpii_chan *gpii_chan = to_gpii_chan(chan);
 	struct gpii *gpii = gpii_chan->gpii;
+	struct msm_gpi_ctrl *gpi_ctrl = chan->private;
 	int i;
 	int ret;
 
@@ -3212,6 +3249,17 @@ static int gpi_resume(struct dma_chan *chan)
 	 * to the gsi hw.
 	 */
 	gpii->is_resumed = true;
+	/* For deep sleep restore the configuration similar to the probe.*/
+	if (gpi_ctrl->cmd == MSM_GPI_DEEP_SLEEP_INIT) {
+		GPII_INFO(gpii, gpii_chan->chid, "deep sleep config\n");
+		ret = gpi_deep_sleep_exit_config(chan, NULL);
+		if (ret) {
+			GPII_ERR(gpii, gpii_chan->chid,
+				 "Err deep sleep config, ret:%d\n", ret);
+			mutex_unlock(&gpii->ctrl_lock);
+			return ret;
+		}
+	}
 
 	if (gpii->pm_state == ACTIVE_STATE) {
 		GPII_INFO(gpii, gpii_chan->chid,
@@ -3363,6 +3411,66 @@ static void gpi_issue_pending(struct dma_chan *chan)
 	gpi_desc = to_gpi_desc(vd);
 	gpi_write_ch_db(gpii_chan, gpii_chan->ch_ring, gpi_desc->db);
 	read_unlock_irqrestore(&gpii->pm_lock, pm_lock_flags);
+}
+
+static int gpi_deep_sleep_exit_config(struct dma_chan *chan,
+				      struct dma_slave_config *config)
+{
+	struct gpii_chan *gpii_chan = to_gpii_chan(chan);
+	struct gpii *gpii = gpii_chan->gpii;
+	int i = 0;
+	int ret = 0;
+
+	GPII_INFO(gpii, gpii_chan->chid, "enter\n");
+
+	ret = gpi_config_interrupts(gpii, DEFAULT_IRQ_SETTINGS, 0);
+	if (ret) {
+		GPII_ERR(gpii, gpii_chan->chid,
+			 "error config. interrupts, ret:%d\n", ret);
+		return ret;
+	}
+
+	/* allocate event rings */
+	ret = gpi_alloc_ev_chan(gpii);
+	if (ret) {
+		GPII_ERR(gpii, gpii_chan->chid,
+			 "error alloc_ev_chan:%d\n", ret);
+		goto error_alloc_ev_ring;
+	}
+
+	/* Allocate all channels */
+	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
+		ret = gpi_alloc_chan(&gpii->gpii_chan[i], true);
+		if (ret) {
+			GPII_ERR(gpii, gpii->gpii_chan[i].chid,
+				 "Error allocating chan:%d\n", ret);
+			goto error_alloc_chan;
+		}
+	}
+
+	/* start channels  */
+	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
+		ret = gpi_start_chan(&gpii->gpii_chan[i]);
+		if (ret) {
+			GPII_ERR(gpii, gpii->gpii_chan[i].chid,
+				 "Error start chan:%d\n", ret);
+			goto error_start_chan;
+		}
+	}
+	return ret;
+
+error_start_chan:
+	for (i = i - 1; i >= 0; i++) {
+		gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_STOP);
+		gpi_send_cmd(gpii, gpii_chan, GPI_CH_CMD_RESET);
+	}
+	i = 2;
+error_alloc_chan:
+	for (i = i - 1; i >= 0; i--)
+		gpi_reset_chan(gpii_chan, GPI_CH_CMD_DE_ALLOC);
+error_alloc_ev_ring:
+	gpi_disable_interrupts(gpii);
+	return ret;
 }
 
 /* configure or issue async command */
@@ -3863,6 +3971,7 @@ static int gpi_probe(struct platform_device *pdev)
 		struct gpii *gpii = &gpi_dev->gpiis[i];
 		int chan;
 
+		gpii->is_resumed = true;
 		gpii->gpii_chan[0].ch_ring = dmam_alloc_coherent(gpi_dev->dev,
 								 sizeof(struct gpi_ring),
 								 &gpii->gpii_chan[0].gpii_chan_dma,
@@ -3886,8 +3995,6 @@ static int gpi_probe(struct platform_device *pdev)
 			GPI_LOG(gpi_dev, "could not allocate for gpii->ev_ring\n");
 			return -ENOMEM;
 		}
-
-		gpii->is_resumed = true;
 
 		if (!(((1 << i) & gpi_dev->gpii_mask)  ||
 				((1 << i) & gpi_dev->static_gpii_mask)))

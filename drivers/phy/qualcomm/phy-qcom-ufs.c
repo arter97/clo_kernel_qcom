@@ -494,6 +494,20 @@ static int ufs_qcom_phy_enable_ref_clk(struct ufs_qcom_phy *phy)
 	if (phy->is_ref_clk_enabled)
 		goto out;
 
+	/*
+	 * "ref_clk_pad_en" is only required if UFS_PHY and UFS_REF_CLK_BSM
+	 * both needs to be enabled. Hence make sure that clk reference
+	 * is available before trying to enable the clock.
+	 */
+	if (phy->ref_clk_pad_en) {
+		ret = clk_prepare_enable(phy->ref_clk_pad_en);
+		if (ret) {
+			dev_err(phy->dev, "%s: ref_clk_pad_en enable failed %d\n",
+				__func__, ret);
+			goto out;
+	}
+}
+
 	/* qref clk signal is optional */
 	if (phy->qref_clk)
 		clk_prepare_enable(phy->qref_clk);
