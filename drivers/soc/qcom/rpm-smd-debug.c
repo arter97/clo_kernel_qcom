@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
-<<<<<<< HEAD
 */
 
 #define pr_fmt(fmt) "rpm-smd-debug: %s(): " fmt, __func__
