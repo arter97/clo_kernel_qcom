@@ -2321,12 +2321,15 @@ int dwc3_resume(struct dwc3 *dwc)
 
 	pinctrl_pm_select_default_state(dwc->dev);
 
-	ret = dwc3_resume_common(dwc, PMSG_RESUME);
-	if (ret)
-		return ret;
-
 	pm_runtime_disable(dwc->dev);
 	pm_runtime_set_active(dwc->dev);
+
+	ret = dwc3_resume_common(dwc, PMSG_RESUME);
+	if (ret) {
+		pm_runtime_set_suspended(dwc->dev);
+		return ret;
+	}
+
 	pm_runtime_enable(dwc->dev);
 
 	return 0;
