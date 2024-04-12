@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2010,2015,2019,2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)     "qcom-scm: %s: " fmt, __func__
 
@@ -202,6 +202,14 @@ static enum qcom_scm_convention __get_convention(void)
 		return qcom_scm_convention;
 
 	/*
+	 * When running on 32bit kernel, SCM call with convention
+	 * SMC_CONVENTION_ARM_64 is causing the system crash. To avoid that
+	 * use SMC_CONVENTION_ARM_64 for 64bit kernel and SMC_CONVENTION_ARM_32
+	 * for 32bit kernel.
+	 */
+
+#if IS_ENABLED(CONFIG_ARM64)
+	/*
 	 * Device isn't required as there is only one argument - no device
 	 * needed to dma_map_single to secure world
 	 */
@@ -221,12 +229,11 @@ static enum qcom_scm_convention __get_convention(void)
 		forced = true;
 		goto found;
 	}
-
+#endif
 	probed_convention = SMC_CONVENTION_ARM_32;
 	ret = __scm_smc_call(NULL, &desc, probed_convention, &res, true);
 	if (!ret && res.result[0] == 1)
 		goto found;
-
 	probed_convention = SMC_CONVENTION_LEGACY;
 found:
 	spin_lock_irqsave(&scm_query_lock, flags);
