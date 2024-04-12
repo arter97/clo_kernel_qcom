@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/cpu.h>
@@ -122,7 +122,7 @@ static int cpucc_clk_determine_rate(struct clk_hw *hw, struct clk_rate_request *
 
 	rrate = cpucc_calc_rate(clk_hw_get_rate(gpll0_hw), 0, 0, 0, div);
 	/* Use the GPLL0 source */
-	if (rate <= rrate) {
+	if (rrate <= rate) {
 		parent_req.best_parent_hw = gpll0_hw;
 		req->best_parent_hw = gpll0_hw;
 		req->best_parent_rate = clk_hw_get_rate(gpll0_hw);
