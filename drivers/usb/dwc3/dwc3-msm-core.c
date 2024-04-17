@@ -5344,7 +5344,7 @@ static ssize_t bus_vote_store(struct device *dev,
 		mdwc->override_bus_vote = BUS_VOTE_MIN;
 	} else if (sysfs_streq(buf, "max")) {
 		bv_fixed = true;
-		mdwc->override_bus_vote = BUS_VOTE_MAX;
+		mdwc->override_bus_vote = BUS_VOTE_NOMINAL;
 	} else if (sysfs_streq(buf, "cancel")) {
 		bv_fixed = false;
 		mdwc->override_bus_vote = BUS_VOTE_NONE;
@@ -5877,12 +5877,6 @@ static int dwc3_msm_core_init(struct dwc3_msm *mdwc)
 		of_node_put(dwc3_node);
 		goto err;
 	}
-
-	/*
-	 * Wait for child's probe completion before retrieving the
-	 * driver data to make sure its populated properly.
-	 */
-	wait_for_device_probe();
 
 	mdwc->dwc3 = of_find_device_by_node(dwc3_node);
 	of_node_put(dwc3_node);

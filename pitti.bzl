@@ -109,6 +109,7 @@ def define_pitti():
         "drivers/scsi/sg.ko",
         "drivers/slimbus/slim-qcom-ngd-ctrl.ko",
         "drivers/slimbus/slimbus.ko",
+        "drivers/soc/qcom/adsp_sleepmon.ko",
         "drivers/soc/qcom/altmode-glink.ko",
         "drivers/soc/qcom/boot_stats.ko",
         "drivers/soc/qcom/charger-ulog-glink.ko",
@@ -156,6 +157,7 @@ def define_pitti():
         "drivers/soc/qcom/sps/sps_drv.ko",
         "drivers/spi/spi-msm-geni.ko",
         "drivers/spmi/spmi-pmic-arb.ko",
+        "drivers/spmi/spmi-pmic-arb-debug.ko",
         "drivers/thermal/qcom/bcl_pmic5.ko",
         "drivers/thermal/qcom/bcl_soc.ko",
         "drivers/thermal/qcom/cpu_hotplug.ko",
@@ -197,6 +199,7 @@ def define_pitti():
 
     _pitti_consolidate_in_tree_modules = _pitti_in_tree_modules + [
         # keep sorted
+        "drivers/cpuidle/governors/qcom_simple_lpm.ko",
         "drivers/hwtracing/coresight/coresight-etm4x.ko",
         "drivers/misc/lkdtm/lkdtm.ko",
         "drivers/usb/misc/ehset.ko",
