@@ -4,6 +4,15 @@
  */
 
 / {
+	firmware {
+		qtee_shmbridge {
+			compatible = "qcom,tee-shared-memory-bridge";
+		};
+
+		qcom_smcinvoke {
+			compatible = "qcom,smcinvoke";
+		};
+	};
 
 };
 
