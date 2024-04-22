@@ -1457,8 +1457,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 
 			err = qcom_scm_assign_mem(phys, (u64)size,
-							&src_perms, fl->cctx->vmperms,
-							fl->cctx->vmcount);
+					&src_perms, fl->cctx->vmperms,
+					fl->cctx->vmcount);
 			if (err) {
 				dev_err(fl->sctx->dev, "Failed to assign memory with phys 0x%llx size 0x%llx err %d",
 					phys, size, err);
