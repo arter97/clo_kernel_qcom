@@ -183,6 +183,8 @@ int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
 }
 EXPORT_SYMBOL_GPL(stmmac_bus_clks_config);
 
+static void stmmac_set_speed100(struct phy_device *phydev);
+
 /**
  * stmmac_verify_args - verify the driver parameters.
  * Description: it checks the driver parameters and set a default in case of
@@ -1044,6 +1046,31 @@ static void stmmac_validate(struct phylink_config *config,
 		     state->advertising, mac_supported);
 	linkmode_andnot(state->advertising,
 			state->advertising, mask);
+
+	/* Early ethernet settings to bring up link in 100M,
+	 * Auto neg Off with full duplex link.
+	 */
+	if (priv->early_eth && !priv->early_eth_config_set) {
+		priv->phydev->autoneg = AUTONEG_DISABLE;
+		priv->phydev->speed = SPEED_100;
+		priv->phydev->duplex = DUPLEX_FULL;
+
+		phylink_clear(mac_supported, 1000baseT_Full);
+		linkmode_and(state->advertising,
+			     state->advertising, mac_supported);
+		linkmode_andnot(state->advertising,
+				state->advertising, mask);
+
+		pr_info("qcom-ethqos: %s early eth setting successful\n",
+			__func__);
+
+		stmmac_set_speed100(priv->phydev);
+		/* Validate method will also be called
+		 * when we change speed using ethtool.
+		 * Add check to avoid multiple calls
+		 */
+		priv->early_eth_config_set = 1;
+	}
 }
 
 static void stmmac_mac_config(struct phylink_config *config, unsigned int mode,
@@ -1195,6 +1222,11 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, true);
+
+	if (phy->link == 1 && !priv->boot_kpi) {
+		pr_info("M - Ethernet is Ready.Link is UP\n");
+		priv->boot_kpi = true;
+	}
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -1230,6 +1262,30 @@ static void stmmac_check_pcs_mode(struct stmmac_priv *priv)
 	}
 }
 
+static void stmmac_set_speed100(struct phy_device *phydev)
+{
+	u16 bmcr_val, ctrl1000_val, adv_val;
+
+	/* Disable 1000M mode */
+	ctrl1000_val = phy_read(phydev, MII_CTRL1000);
+	ctrl1000_val &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
+	phy_write(phydev, MII_CTRL1000, ctrl1000_val);
+
+	/* Disable 100M mode */
+	adv_val = phy_read(phydev, MII_ADVERTISE);
+	adv_val &= ~(ADVERTISE_100HALF);
+	phy_write(phydev, MII_ADVERTISE, adv_val);
+
+	/* Disable autoneg */
+	bmcr_val = phy_read(phydev, MII_BMCR);
+	bmcr_val &= ~(BMCR_ANENABLE);
+	phy_write(phydev, MII_BMCR, bmcr_val);
+
+	bmcr_val = phy_read(phydev, MII_BMCR);
+	bmcr_val |= BMCR_ANRESTART;
+	phy_write(phydev, MII_BMCR, bmcr_val);
+}
+
 /**
  * stmmac_init_phy - PHY initialization
  * @dev: net device structure
@@ -1244,6 +1300,8 @@ static int stmmac_init_phy(struct net_device *dev)
 	struct fwnode_handle *phy_fwnode;
 	struct fwnode_handle *fwnode;
 	int ret = 0;
+
+	priv->boot_kpi = false;
 
 	if (!phylink_expects_phy(priv->phylink))
 		return 0;
@@ -2706,6 +2764,9 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 				priv->dev->stats.tx_packets++;
 				priv->xstats.tx_pkt_n++;
 				priv->xstats.txq_stats[queue].tx_pkt_n++;
+
+				if (priv->dev->stats.tx_packets == 1)
+					pr_info("M - Ethernet first packet transmitted\n");
 			}
 			if (skb)
 				stmmac_get_tx_hwtstamp(priv, p, skb);
@@ -5548,6 +5609,10 @@ drain_data:
 		skb = NULL;
 
 		priv->dev->stats.rx_packets++;
+
+		if (priv->dev->stats.rx_packets == 1)
+			pr_info_once("M - Ethernet first packet received\n");
+
 		priv->dev->stats.rx_bytes += len;
 		count++;
 	}
@@ -7680,6 +7745,19 @@ int stmmac_resume(struct device *dev)
 
 		if (ret < 0)
 			return ret;
+	}
+
+	/* enable interrupt */
+	if (priv->plat->phy_intr_en_extn_stm) {
+		priv->phydev->irq = PHY_MAC_INTERRUPT;
+		priv->phydev->interrupts =  PHY_INTERRUPT_ENABLED;
+
+		if (priv->phydev->drv &&
+		    priv->phydev->drv->config_intr &&
+		    !priv->phydev->drv->config_intr(priv->phydev)) {
+			pr_debug("qcom-ethqos: %s config_phy_intr successful aftre connect\n",
+				 __func__);
+		}
 	}
 
 	rtnl_lock();
