@@ -326,6 +326,9 @@ struct stmmac_priv {
 	struct bpf_prog *xdp_prog;
 
 	bool phy_irq_enabled;
+	bool boot_kpi;
+	bool early_eth;
+	bool early_eth_config_set;
 };
 
 enum stmmac_state {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)	"qti-flash: %s: " fmt, __func__
 
@@ -406,8 +406,9 @@ static int qti_flash_led_strobe(struct qti_flash_led *led,
 {
 	int rc, i;
 	bool enable = mask & value;
+	unsigned long flags;
 
-	spin_lock(&led->lock);
+	spin_lock_irqsave(&led->lock, flags);
 
 	if (enable) {
 		for (i = 0; i < led->max_channels; i++)
@@ -453,7 +454,7 @@ static int qti_flash_led_strobe(struct qti_flash_led *led,
 	}
 
 error:
-	spin_unlock(&led->lock);
+	spin_unlock_irqrestore(&led->lock, flags);
 
 	return rc;
 }
@@ -463,10 +464,11 @@ static int qti_flash_led_enable(struct flash_node_data *fnode)
 	struct qti_flash_led *led = fnode->led;
 	int rc;
 	u8 val, addr_offset;
+	unsigned long flags;
 
 	addr_offset = fnode->id;
 
-	spin_lock(&led->lock);
+	spin_lock_irqsave(&led->lock, flags);
 	val = (fnode->updated_ires_idx ? 0 : 1) << fnode->id;
 	rc = qti_flash_led_masked_write(led, FLASH_LED_IRESOLUTION,
 		FLASH_LED_IRESOLUTION_MASK(fnode->id), val);
@@ -484,7 +486,7 @@ static int qti_flash_led_enable(struct flash_node_data *fnode)
 	 * just configure the target current.
 	 */
 	if (fnode->type == FLASH_LED_TYPE_TORCH && fnode->enabled) {
-		spin_unlock(&led->lock);
+		spin_unlock_irqrestore(&led->lock, flags);
 		return 0;
 	}
 
@@ -503,7 +505,7 @@ static int qti_flash_led_enable(struct flash_node_data *fnode)
 		gpio_set_value(led->hw_strobe_gpio[fnode->id], 1);
 
 out:
-	spin_unlock(&led->lock);
+	spin_unlock_irqrestore(&led->lock, flags);
 	return rc;
 }
 
@@ -511,13 +513,14 @@ static int qti_flash_led_disable(struct flash_node_data *fnode)
 {
 	struct qti_flash_led *led = fnode->led;
 	int rc;
+	unsigned long flags;
 
 	if (!fnode->configured) {
 		pr_debug("%s is not configured\n", fnode->fdev.led_cdev.name);
 		return 0;
 	}
 
-	spin_lock(&led->lock);
+	spin_lock_irqsave(&led->lock, flags);
 	if ((fnode->strobe_sel == HW_STROBE) &&
 		gpio_is_valid(led->hw_strobe_gpio[fnode->id]))
 		gpio_set_value(led->hw_strobe_gpio[fnode->id], 0);
@@ -538,7 +541,7 @@ static int qti_flash_led_disable(struct flash_node_data *fnode)
 	fnode->user_current_ma = 0;
 
 out:
-	spin_unlock(&led->lock);
+	spin_unlock_irqrestore(&led->lock, flags);
 	return rc;
 }
 
@@ -1371,7 +1374,6 @@ struct flash_led_register {
 };
 
 static const struct flash_led_register ext_setup_reg_list[] = {
-	{ FLASH_LED_IRESOLUTION, 0x01, FLASH_LED_IRESOLUTION_MASK(0) },
 	{ FLASH_LED_HDRM_WINDOW, 0x0, FLASH_LED_HI_LO_WIN_MASK },
 	{ FLASH_LED_HDRM_PRGM(0), 0x20, FLASH_LED_HDRM_CTRL_MODE_MASK | FLASH_LED_VOLTAGE_MASK },
 	{ FLASH_LED_HDRM_PRGM(1), 0x20, FLASH_LED_HDRM_CTRL_MODE_MASK | FLASH_LED_VOLTAGE_MASK },
@@ -1416,10 +1418,13 @@ static int qti_flash_led_setup(struct qti_flash_led *led)
 				(led->fnode[i].strobe_sel <<
 				FLASH_LED_STROBE_SEL_SHIFT);
 
-		if (led->ext_led)
-			val |= FLASH_LED_STROBE_TRIGGER | FLASH_LED_STROBE_POLARITY;
-
 		mask = FLASH_LED_STROBE_CFG_MASK | FLASH_LED_HW_SW_STROBE_SEL;
+
+		if (led->ext_led) {
+			val |= FLASH_LED_STROBE_TRIGGER | FLASH_LED_STROBE_POLARITY;
+			mask |= FLASH_LED_STROBE_TRIGGER | FLASH_LED_STROBE_POLARITY;
+		}
+
 		rc = qti_flash_led_masked_write(led,
 			FLASH_LED_STROBE_CTRL(addr_offset), mask, val);
 		if (rc < 0)
