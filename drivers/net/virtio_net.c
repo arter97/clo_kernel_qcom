@@ -46,6 +46,15 @@ module_param(napi_tx, bool, 0644);
 
 #define VIRTIO_XDP_FLAG	BIT(0)
 
+/* Timestamp length */
+#define HW_TIMESTAMP_LEN	8
+
+/* Guest can handle H/W timestamp in. */
+#define VIRTIO_NET_F_GUEST_TS	50
+
+/* H/W timestamp */
+#define VIRTIO_NET_HDR_F_TIMESTAMP	128
+
 /* RX packet size EWMA. The average packet size is used to determine the packet
  * buffer size when refilling RX rings. As the entire RX ring may be refilled
  * at once, the weight is chosen so that the EWMA will be insensitive to short-
@@ -200,6 +209,8 @@ struct control_buf {
 	__virtio16 vid;
 	__virtio64 offloads;
 	struct virtio_net_ctrl_rss rss;
+	struct virtio_net_ctrl_coal_tx coal_tx;
+	struct virtio_net_ctrl_coal_rx coal_rx;
 };
 
 struct virtnet_info {
@@ -284,6 +295,9 @@ struct virtnet_info {
 
 	/* failover when STANDBY feature enabled */
 	struct failover *failover;
+
+	/* RX H/W timestamp control */
+	bool rx_hwts_enabled;
 };
 
 struct padded_vnet_hdr {
@@ -1247,6 +1261,8 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	struct net_device *dev = vi->dev;
 	struct sk_buff *skb;
 	struct virtio_net_hdr_mrg_rxbuf *hdr;
+	struct skb_shared_hwtstamps *ts;
+	s64 hwts;
 
 	if (unlikely(len < vi->hdr_len + ETH_HLEN)) {
 		pr_debug("%s: short packet %i\n", dev->name, len);
@@ -1273,6 +1289,18 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 		return;
 
 	hdr = skb_vnet_hdr(skb);
+
+	if (hdr->hdr.flags & VIRTIO_NET_HDR_F_TIMESTAMP) {
+		stats->bytes -= HW_TIMESTAMP_LEN;
+		skb_copy_bits(skb, skb->len - HW_TIMESTAMP_LEN, &hwts, HW_TIMESTAMP_LEN);
+		pskb_trim(skb, skb->len - HW_TIMESTAMP_LEN);
+		if (vi->rx_hwts_enabled) {
+			ts = skb_hwtstamps(skb);
+			if (ts)
+				ts->hwtstamp = ns_to_ktime(virtio64_to_cpu(vi->vdev, hwts));
+		}
+	}
+
 	if (dev->features & NETIF_F_RXHASH && vi->has_rss_hash_report)
 		virtio_skb_set_hash((const struct virtio_net_hdr_v1_hash *)hdr, skb);
 
@@ -1697,6 +1725,38 @@ static int virtnet_poll(struct napi_struct *napi, int budget)
 	return received;
 }
 
+static void virtnet_disable_queue_pair(struct virtnet_info *vi, int qp_index)
+{
+	virtnet_napi_tx_disable(&vi->sq[qp_index].napi);
+	napi_disable(&vi->rq[qp_index].napi);
+	xdp_rxq_info_unreg(&vi->rq[qp_index].xdp_rxq);
+}
+
+static int virtnet_enable_queue_pair(struct virtnet_info *vi, int qp_index)
+{
+	struct net_device *dev = vi->dev;
+	int err;
+
+	err = xdp_rxq_info_reg(&vi->rq[qp_index].xdp_rxq, dev, qp_index,
+			       vi->rq[qp_index].napi.napi_id);
+	if (err < 0)
+		return err;
+
+	err = xdp_rxq_info_reg_mem_model(&vi->rq[qp_index].xdp_rxq,
+					 MEM_TYPE_PAGE_SHARED, NULL);
+	if (err < 0)
+		goto err_xdp_reg_mem_model;
+
+	virtnet_napi_enable(vi->rq[qp_index].vq, &vi->rq[qp_index].napi);
+	virtnet_napi_tx_enable(vi, vi->sq[qp_index].vq, &vi->sq[qp_index].napi);
+
+	return 0;
+
+err_xdp_reg_mem_model:
+	xdp_rxq_info_unreg(&vi->rq[qp_index].xdp_rxq);
+	return err;
+}
+
 static int virtnet_open(struct net_device *dev)
 {
 	struct virtnet_info *vi = netdev_priv(dev);
@@ -1710,22 +1770,20 @@ static int virtnet_open(struct net_device *dev)
 			if (!try_fill_recv(vi, &vi->rq[i], GFP_KERNEL))
 				schedule_delayed_work(&vi->refill, 0);
 
-		err = xdp_rxq_info_reg(&vi->rq[i].xdp_rxq, dev, i, vi->rq[i].napi.napi_id);
+		err = virtnet_enable_queue_pair(vi, i);
 		if (err < 0)
-			return err;
-
-		err = xdp_rxq_info_reg_mem_model(&vi->rq[i].xdp_rxq,
-						 MEM_TYPE_PAGE_SHARED, NULL);
-		if (err < 0) {
-			xdp_rxq_info_unreg(&vi->rq[i].xdp_rxq);
-			return err;
-		}
-
-		virtnet_napi_enable(vi->rq[i].vq, &vi->rq[i].napi);
-		virtnet_napi_tx_enable(vi, vi->sq[i].vq, &vi->sq[i].napi);
+			goto err_enable_qp;
 	}
 
 	return 0;
+
+err_enable_qp:
+	disable_delayed_refill(vi);
+	cancel_delayed_work_sync(&vi->refill);
+
+	for (i--; i >= 0; i--)
+		virtnet_disable_queue_pair(vi, i);
+	return err;
 }
 
 static int virtnet_poll_tx(struct napi_struct *napi, int budget)
@@ -2157,11 +2215,8 @@ static int virtnet_close(struct net_device *dev)
 	/* Make sure refill_work doesn't re-enable napi! */
 	cancel_delayed_work_sync(&vi->refill);
 
-	for (i = 0; i < vi->max_queue_pairs; i++) {
-		napi_disable(&vi->rq[i].napi);
-		xdp_rxq_info_unreg(&vi->rq[i].xdp_rxq);
-		virtnet_napi_tx_disable(&vi->sq[i].napi);
-	}
+	for (i = 0; i < vi->max_queue_pairs; i++)
+		virtnet_disable_queue_pair(vi, i);
 
 	return 0;
 }
@@ -2475,7 +2530,7 @@ static void virtnet_init_default_rss(struct virtnet_info *vi)
 		vi->ctrl->rss.indirection_table[i] = indir_val;
 	}
 
-	vi->ctrl->rss.max_tx_vq = vi->curr_queue_pairs;
+	vi->ctrl->rss.max_tx_vq = vi->has_rss ? vi->curr_queue_pairs : 0;
 	vi->ctrl->rss.hash_key_length = vi->rss_key_size;
 
 	netdev_rss_key_fill(vi->ctrl->rss.key, vi->rss_key_size);
@@ -2759,12 +2814,10 @@ static int virtnet_send_notf_coal_cmds(struct virtnet_info *vi,
 				       struct ethtool_coalesce *ec)
 {
 	struct scatterlist sgs_tx, sgs_rx;
-	struct virtio_net_ctrl_coal_tx coal_tx;
-	struct virtio_net_ctrl_coal_rx coal_rx;
 
-	coal_tx.tx_usecs = cpu_to_le32(ec->tx_coalesce_usecs);
-	coal_tx.tx_max_packets = cpu_to_le32(ec->tx_max_coalesced_frames);
-	sg_init_one(&sgs_tx, &coal_tx, sizeof(coal_tx));
+	vi->ctrl->coal_tx.tx_usecs = cpu_to_le32(ec->tx_coalesce_usecs);
+	vi->ctrl->coal_tx.tx_max_packets = cpu_to_le32(ec->tx_max_coalesced_frames);
+	sg_init_one(&sgs_tx, &vi->ctrl->coal_tx, sizeof(vi->ctrl->coal_tx));
 
 	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL,
 				  VIRTIO_NET_CTRL_NOTF_COAL_TX_SET,
@@ -2775,9 +2828,9 @@ static int virtnet_send_notf_coal_cmds(struct virtnet_info *vi,
 	vi->tx_usecs = ec->tx_coalesce_usecs;
 	vi->tx_max_packets = ec->tx_max_coalesced_frames;
 
-	coal_rx.rx_usecs = cpu_to_le32(ec->rx_coalesce_usecs);
-	coal_rx.rx_max_packets = cpu_to_le32(ec->rx_max_coalesced_frames);
-	sg_init_one(&sgs_rx, &coal_rx, sizeof(coal_rx));
+	vi->ctrl->coal_rx.rx_usecs = cpu_to_le32(ec->rx_coalesce_usecs);
+	vi->ctrl->coal_rx.rx_max_packets = cpu_to_le32(ec->rx_max_coalesced_frames);
+	sg_init_one(&sgs_rx, &vi->ctrl->coal_rx, sizeof(vi->ctrl->coal_rx));
 
 	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL,
 				  VIRTIO_NET_CTRL_NOTF_COAL_RX_SET,
@@ -2975,6 +3028,31 @@ static int virtnet_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *info)
 	return rc;
 }
 
+static int ethtool_op_get_ts_info_plus(struct net_device *dev, struct ethtool_ts_info *eti)
+{
+	struct virtnet_info *vi = netdev_priv(dev);
+	int ret = ethtool_op_get_ts_info(dev, eti);
+
+	if (ret) {
+		/* calling the default failed */
+		return ret;
+	}
+
+	/* set TX */
+	eti->tx_types = HWTSTAMP_TX_OFF;
+
+	/* set RX */
+	if (virtio_has_feature(vi->vdev, VIRTIO_NET_F_GUEST_TS)) {
+		eti->rx_filters = HWTSTAMP_FILTER_ALL;
+		eti->so_timestamping |= (SOF_TIMESTAMPING_RX_HARDWARE
+					| SOF_TIMESTAMPING_RAW_HARDWARE);
+	} else {
+		eti->rx_filters = HWTSTAMP_FILTER_NONE;
+	}
+
+	return 0;
+}
+
 static const struct ethtool_ops virtnet_ethtool_ops = {
 	.supported_coalesce_params = ETHTOOL_COALESCE_MAX_FRAMES |
 		ETHTOOL_COALESCE_USECS,
@@ -2987,7 +3065,7 @@ static const struct ethtool_ops virtnet_ethtool_ops = {
 	.get_ethtool_stats = virtnet_get_ethtool_stats,
 	.set_channels = virtnet_set_channels,
 	.get_channels = virtnet_get_channels,
-	.get_ts_info = ethtool_op_get_ts_info,
+	.get_ts_info = ethtool_op_get_ts_info_plus,
 	.get_link_ksettings = virtnet_get_link_ksettings,
 	.set_link_ksettings = virtnet_set_link_ksettings,
 	.set_coalesce = virtnet_set_coalesce,
@@ -3267,6 +3345,54 @@ static void virtnet_tx_timeout(struct net_device *dev, unsigned int txqueue)
 		   jiffies_to_usecs(jiffies - READ_ONCE(txq->trans_start)));
 }
 
+static int virtnet_ioctl(struct net_device *dev, struct ifreq *if_r, int io_cmd)
+{
+	struct virtnet_info *vi = netdev_priv(dev);
+	struct hwtstamp_config ts_cfg;
+	int flag = 0;
+
+	switch (io_cmd) {
+	case SIOCGHWTSTAMP:
+		memset(&ts_cfg, 0, sizeof(ts_cfg));
+		ts_cfg.tx_type = HWTSTAMP_TX_OFF;
+		ts_cfg.rx_filter = vi->rx_hwts_enabled ? HWTSTAMP_FILTER_ALL : HWTSTAMP_FILTER_NONE;
+		if (copy_to_user(if_r->ifr_data, &ts_cfg, sizeof(ts_cfg)))
+			flag = -EFAULT;
+
+		break;
+
+	case SIOCSHWTSTAMP:
+		if (copy_from_user(&ts_cfg, if_r->ifr_data, sizeof(ts_cfg))) {
+			flag = -EFAULT;
+		} else {
+			if (ts_cfg.flags || ts_cfg.tx_type != HWTSTAMP_TX_OFF) {
+				flag = -EINVAL;
+			} else {
+				if (ts_cfg.rx_filter != HWTSTAMP_FILTER_NONE)
+					ts_cfg.rx_filter = HWTSTAMP_FILTER_ALL;
+
+				if (virtio_has_feature(vi->vdev, VIRTIO_NET_F_GUEST_TS)) {
+					vi->rx_hwts_enabled = (ts_cfg.rx_filter ==
+								HWTSTAMP_FILTER_ALL);
+				} else {
+					vi->rx_hwts_enabled = false;
+					ts_cfg.rx_filter = HWTSTAMP_FILTER_NONE;
+				}
+
+				if (copy_to_user(if_r->ifr_data, &ts_cfg, sizeof(ts_cfg)))
+					flag = -EFAULT;
+			}
+		}
+		break;
+
+	default:
+		flag = -EOPNOTSUPP;
+		break;
+	}
+
+	return flag;
+}
+
 static const struct net_device_ops virtnet_netdev = {
 	.ndo_open            = virtnet_open,
 	.ndo_stop   	     = virtnet_close,
@@ -3283,6 +3409,7 @@ static const struct net_device_ops virtnet_netdev = {
 	.ndo_get_phys_port_name	= virtnet_get_phys_port_name,
 	.ndo_set_features	= virtnet_set_features,
 	.ndo_tx_timeout		= virtnet_tx_timeout,
+	.ndo_eth_ioctl		= virtnet_ioctl,
 };
 
 static void virtnet_config_changed_work(struct work_struct *work)
@@ -3405,12 +3532,14 @@ static void free_unused_bufs(struct virtnet_info *vi)
 		struct virtqueue *vq = vi->sq[i].vq;
 		while ((buf = virtqueue_detach_unused_buf(vq)) != NULL)
 			virtnet_sq_free_unused_buf(vq, buf);
+		cond_resched();
 	}
 
 	for (i = 0; i < vi->max_queue_pairs; i++) {
 		struct virtqueue *vq = vi->rq[i].vq;
 		while ((buf = virtqueue_detach_unused_buf(vq)) != NULL)
 			virtnet_rq_free_unused_buf(vq, buf);
+		cond_resched();
 	}
 }
 
@@ -3796,6 +3925,8 @@ static int virtnet_probe(struct virtio_device *vdev)
 		eth_hw_addr_set(dev, addr);
 	} else {
 		eth_hw_addr_random(dev);
+		dev_info(&vdev->dev, "Assigned random MAC address %pM\n",
+			 dev->dev_addr);
 	}
 
 	/* Set up our device-specific information */
@@ -3923,6 +4054,26 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	virtio_device_ready(vdev);
 
+	_virtnet_set_queues(vi, vi->curr_queue_pairs);
+
+	/* a random MAC address has been assigned, notify the device.
+	 * We don't fail probe if VIRTIO_NET_F_CTRL_MAC_ADDR is not there
+	 * because many devices work fine without getting MAC explicitly
+	 */
+	if (!virtio_has_feature(vdev, VIRTIO_NET_F_MAC) &&
+	    virtio_has_feature(vi->vdev, VIRTIO_NET_F_CTRL_MAC_ADDR)) {
+		struct scatterlist sg;
+
+		sg_init_one(&sg, dev->dev_addr, dev->addr_len);
+		if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC,
+					  VIRTIO_NET_CTRL_MAC_ADDR_SET, &sg)) {
+			pr_debug("virtio_net: setting MAC address failed\n");
+			rtnl_unlock();
+			err = -EINVAL;
+			goto free_unregister_netdev;
+		}
+	}
+
 	rtnl_unlock();
 
 	err = virtnet_cpu_notif_add(vi);
@@ -3930,8 +4081,6 @@ static int virtnet_probe(struct virtio_device *vdev)
 		pr_debug("virtio_net: registering cpu notifier failed\n");
 		goto free_unregister_netdev;
 	}
-
-	virtnet_set_queues(vi, vi->curr_queue_pairs);
 
 	/* Assume link up if device can't report link status,
 	   otherwise get link status from config. */
@@ -4048,7 +4197,8 @@ static struct virtio_device_id id_table[] = {
 	VIRTIO_NET_F_CTRL_MAC_ADDR, \
 	VIRTIO_NET_F_MTU, VIRTIO_NET_F_CTRL_GUEST_OFFLOADS, \
 	VIRTIO_NET_F_SPEED_DUPLEX, VIRTIO_NET_F_STANDBY, \
-	VIRTIO_NET_F_RSS, VIRTIO_NET_F_HASH_REPORT, VIRTIO_NET_F_NOTF_COAL
+	VIRTIO_NET_F_RSS, VIRTIO_NET_F_HASH_REPORT, VIRTIO_NET_F_NOTF_COAL, \
+	VIRTIO_NET_F_GUEST_TS
 
 static unsigned int features[] = {
 	VIRTNET_FEATURES,

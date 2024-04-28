@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -49,6 +49,9 @@
 		.intr_status_reg = base + 0xc + REG_SIZE * id,	\
 		.intr_target_reg = base + 0x8 + REG_SIZE * id,	\
 		.mux_bit = 2,			\
+		.dir_conn_reg = (base == EAST) ? base + 0xcc000 : \
+			((base == WEST) ? base + 0xcc000 : \
+			((base == NORTH) ? EAST + 0xcc000 : base + 0xcd000)), \
 		.pull_bit = 0,			\
 		.drv_bit = 6,			\
 		.egpio_enable = 12,		\
@@ -64,6 +67,7 @@
 		.intr_polarity_bit = 1,		\
 		.intr_detection_bit = 2,	\
 		.intr_detection_width = 2,	\
+		.dir_conn_en_bit = 8,       \
 	}
 
 #define SDC_QDSD_PINGROUP(pg_name, ctl, pull, drv)	\
@@ -684,6 +688,7 @@ enum sdmshrike_functions {
 	msm_mux_cci_timer8,
 	msm_mux_cci_timer9,
 	msm_mux_dp_hot,
+	msm_mux_egpio,
 	msm_mux_qup0,
 	msm_mux_gpio,
 	msm_mux_cci_i2c,
@@ -1336,6 +1341,13 @@ static const char * const gpio_groups[] = {
 	"gpio181", "gpio182", "gpio183", "gpio184", "gpio185", "gpio186",
 	"gpio186", "gpio187", "gpio187", "gpio188", "gpio188", "gpio189",
 };
+static const char * const egpio_groups[] = {
+	"gpio155", "gpio156", "gpio157", "gpio158",
+	"gpio159", "gpio160", "gpio161", "gpio162",
+	"gpio163", "gpio164", "gpio165", "gpio166",
+	"gpio167", "gpio168",
+	"gpio169", "gpio172", "gpio173", "gpio174",
+};
 static const char * const cci_i2c_groups[] = {
 	"gpio0", "gpio1", "gpio2", "gpio3", "gpio17", "gpio18", "gpio19",
 	"gpio20", "gpio31", "gpio32", "gpio33", "gpio34", "gpio39", "gpio40",
@@ -1808,6 +1820,7 @@ static const struct msm_function sdmshrike_functions[] = {
 	FUNCTION(cci_timer8),
 	FUNCTION(cci_timer9),
 	FUNCTION(dp_hot),
+	FUNCTION(egpio),
 	FUNCTION(qup0),
 	FUNCTION(gpio),
 	FUNCTION(cci_i2c),
@@ -2174,39 +2187,39 @@ static const struct msm_pingroup sdmshrike_groups[] = {
 	[154] = PINGROUP(154, WEST, btfm_slimbus, NA, NA, NA, NA, NA, NA, NA,
 			 NA),
 	[155] = PINGROUP(155, WEST, hs1_mi2s, NA, phase_flag12, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[156] = PINGROUP(156, WEST, hs1_mi2s, NA, phase_flag11, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[157] = PINGROUP(157, WEST, hs1_mi2s, NA, phase_flag10, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[158] = PINGROUP(158, WEST, hs1_mi2s, NA, phase_flag9, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[159] = PINGROUP(159, WEST, hs1_mi2s, cri_trng0, NA, phase_flag8, NA,
-			 NA, NA, NA, NA),
+			 NA, NA, NA, egpio),
 	[160] = PINGROUP(160, WEST, hs2_mi2s, cri_trng1, NA, phase_flag7, NA,
-			 NA, NA, NA, NA),
+			 NA, NA, NA, egpio),
 	[161] = PINGROUP(161, WEST, hs2_mi2s, qspi11, cri_trng, NA,
-			 phase_flag24, NA, NA, NA, NA),
+			 phase_flag24, NA, NA, NA, egpio),
 	[162] = PINGROUP(162, WEST, hs2_mi2s, qspi10, sp_cmu, NA, phase_flag6,
-			 NA, NA, NA, NA),
+			 NA, NA, NA, egpio),
 	[163] = PINGROUP(163, WEST, hs2_mi2s, qspi1_clk, prng_rosc, NA,
-			 phase_flag5, NA, NA, NA, NA),
+			 phase_flag5, NA, NA, NA, egpio),
 	[164] = PINGROUP(164, WEST, hs2_mi2s, qspi1_cs, NA, phase_flag31, NA,
-			 NA, NA, NA, NA),
+			 NA, NA, NA, egpio),
 	[165] = PINGROUP(165, WEST, hs3_mi2s, NA, phase_flag30, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[166] = PINGROUP(166, WEST, hs3_mi2s, NA, phase_flag27, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[167] = PINGROUP(167, WEST, hs3_mi2s, NA, phase_flag26, NA, NA, NA, NA,
-			 NA, NA),
+			 NA, egpio),
 	[168] = PINGROUP(168, WEST, hs3_mi2s, NA, phase_flag25, NA, NA, NA, NA,
-			 NA, NA),
-	[169] = PINGROUP(169, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+			 NA, egpio),
+	[169] = PINGROUP(169, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, egpio),
 	[170] = PINGROUP(170, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	[171] = PINGROUP(171, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	[172] = PINGROUP(172, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	[173] = PINGROUP(173, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	[174] = PINGROUP(174, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	[172] = PINGROUP(172, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, egpio),
+	[173] = PINGROUP(173, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, egpio),
+	[174] = PINGROUP(174, SOUTH, NA, NA, NA, NA, NA, NA, NA, NA, egpio),
 	[175] = PINGROUP(175, SOUTH, pci_e2, NA, NA, NA, NA, NA, NA, NA, NA),
 	[176] = PINGROUP(176, SOUTH, pci_e2, cci_async, NA, NA, NA, NA, NA, NA,
 			 NA),
@@ -2257,6 +2270,11 @@ static const struct msm_gpio_wakeirq_map sdmshrike_pdc_map[] = {
 	{ 189, 114 },
 };
 
+static struct msm_dir_conn sdmshrike_dir_conn[] = {
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}, {-1, 0},
+	{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}
+};
+
 static struct msm_pinctrl_soc_data sdmshrike_pinctrl = {
 	.pins = sdmshrike_pins,
 	.npins = ARRAY_SIZE(sdmshrike_pins),
@@ -2268,11 +2286,54 @@ static struct msm_pinctrl_soc_data sdmshrike_pinctrl = {
 	.wakeirq_map = sdmshrike_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(sdmshrike_pdc_map),
 	.wakeirq_dual_edge_errata = true,
+	.dir_conn = sdmshrike_dir_conn,
 	.egpio_func = 9,
 };
 
+static int sdmshrike_pinctrl_dirconn_list_probe(struct platform_device *pdev)
+{
+	int ret, n, dirconn_list_count, m;
+	struct device_node *np = pdev->dev.of_node;
+
+	n = of_property_count_elems_of_size(np, "qcom,dirconn-list",
+					sizeof(u32));
+	if (n <= 0 || n % 2)
+		return -EINVAL;
+
+	m = ARRAY_SIZE(sdmshrike_dir_conn) - 1;
+
+	dirconn_list_count = n / 2;
+
+	for (n = 0; n < dirconn_list_count; n++) {
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+						n * 2 + 0,
+						&sdmshrike_dir_conn[m].gpio);
+		if (ret)
+			return ret;
+		ret = of_property_read_u32_index(np, "qcom,dirconn-list",
+						n * 2 + 1,
+						&sdmshrike_dir_conn[m].irq);
+		if (ret)
+			return ret;
+		m--;
+	}
+
+	return 0;
+}
+
 static int sdmshrike_pinctrl_probe(struct platform_device *pdev)
 {
+	int len, ret;
+
+	if (of_find_property(pdev->dev.of_node, "qcom,dirconn-list", &len)) {
+		ret = sdmshrike_pinctrl_dirconn_list_probe(pdev);
+		if (ret) {
+			dev_err(&pdev->dev,
+					"Unable to parse Direct Connect List\n");
+			return ret;
+		}
+	}
+
 	return msm_pinctrl_probe(pdev, &sdmshrike_pinctrl);
 }
 

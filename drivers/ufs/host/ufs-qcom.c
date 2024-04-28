@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2022, Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/acpi.h>
@@ -168,6 +168,7 @@ static int ufs_qcom_config_shared_ice(struct ufs_qcom_host *host);
 static int ufs_qcom_ber_threshold_set(const char *val, const struct kernel_param *kp);
 static int ufs_qcom_ber_duration_set(const char *val, const struct kernel_param *kp);
 static void ufs_qcom_ber_mon_init(struct ufs_hba *hba);
+static void ufs_qcom_populate_available_cpus(struct ufs_hba *hba);
 
 static s64 idle_time[UFS_QCOM_BER_MODE_MAX];
 static ktime_t idle_start;
@@ -1537,6 +1538,51 @@ static int ufs_qcom_init_cpu_minfreq_req(struct ufs_qcom_host *host)
 	return ret;
 }
 
+/**
+ * ufs_qcom_populate_available_cpus - Populate all the available cpu masks -
+ * Silver, gold and gold prime.
+ * @hba: per adapter instance
+ */
+static void ufs_qcom_populate_available_cpus(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int cid_cpu[MAX_NUM_CLUSTERS] = {-1, -1, -1, -1};
+	int cid = -1;
+	int prev_cid = -1;
+	int cpu = 0;
+	/*
+	 * Due to Logical contiguous CPU numbering, one to one mapping
+	 * between physical and logical cpu is no more applicable.
+	 * Hence we are not passing cpu mask from the device tree.
+	 * Hence populate the cpu mask dynamically as below.
+	 */
+	for_each_cpu(cpu, cpu_possible_mask) {
+		cid = topology_cluster_id(cpu);
+		if (cid != prev_cid) {
+			cid_cpu[cid] = cpu;
+			prev_cid = cid;
+		}
+	}
+
+	if (cid_cpu[CLUSTER_0] != -1) {
+		host->cluster_mask[CLUSTER_0].bits[0] =
+			topology_cluster_cpumask(cid_cpu[CLUSTER_0])->bits[0];
+	}
+	if (cid_cpu[CLUSTER_1] != -1) {
+		host->cluster_mask[CLUSTER_1].bits[0] =
+			topology_cluster_cpumask(cid_cpu[CLUSTER_1])->bits[0];
+	}
+	if (cid_cpu[CLUSTER_2] != -1) {
+		host->cluster_mask[CLUSTER_2].bits[0] =
+			topology_cluster_cpumask(cid_cpu[CLUSTER_2])->bits[0];
+	}
+
+	if (cid_cpu[CLUSTER_3] != -1) {
+		host->cluster_mask[CLUSTER_3].bits[0] =
+			topology_cluster_cpumask(cid_cpu[CLUSTER_3])->bits[0];
+	}
+}
+
 static void ufs_qcom_set_affinity_hint(struct ufs_hba *hba, bool prime)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
@@ -1562,30 +1608,44 @@ static void ufs_qcom_set_affinity_hint(struct ufs_hba *hba, bool prime)
 static void ufs_qcom_set_esi_affinity_hint(struct ufs_hba *hba)
 {
 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
-	cpumask_t *affinity_mask = &host->esi_affinity_mask;
+	cpumask_t affinity_mask;
 	const cpumask_t *mask;
 	struct msi_desc *desc;
 	unsigned int set = IRQ_NO_BALANCING;
 	unsigned int clear = 0;
-	unsigned int cpu = 0;
+	unsigned int num_cpu = 0;
 	int ret, i = 0;
 
-	if (affinity_mask->bits[0] == 0)
+	if (!(host->cluster_mask[CLUSTER_3].bits[0] || host->cluster_mask[CLUSTER_2].bits[0] ||
+			host->cluster_mask[CLUSTER_1].bits[0]))
 		return;
 
 	ufs_qcom_msi_lock_descs(hba);
 	msi_for_each_desc(desc, hba->dev, MSI_DESC_ALL) {
-		if (i % cpumask_weight(affinity_mask) == 0)
-			cpu = cpumask_first(affinity_mask);
-		else
-			cpu = cpumask_next(cpu, affinity_mask);
+		/* Check if target has 4 cpu clusters configuration */
+		if (host->cluster_mask[CLUSTER_3].bits[0]) {
+			affinity_mask.bits[0] = host->cluster_mask[CLUSTER_2].bits[0] |
+						host->cluster_mask[CLUSTER_3].bits[0];
+		}
 
-		mask = get_cpu_mask(cpu);
+		/* Check if the target has 3 cpu cluster configuration */
+		else if (host->cluster_mask[CLUSTER_2].bits[0])  {
+			if (cpumask_subset(get_cpu_mask(i), &host->cluster_mask[CLUSTER_1]) &&
+					(num_cpu++ <= 2))
+				affinity_mask = host->cluster_mask[CLUSTER_2];
+			else
+				affinity_mask = host->cluster_mask[CLUSTER_1];
+		}
+
+		else
+			affinity_mask = host->cluster_mask[CLUSTER_1];
+
+		mask = &affinity_mask;
 		irq_modify_status(desc->irq, clear, set);
 		ret = irq_set_affinity_hint(desc->irq, mask);
 		if (ret < 0)
-			dev_err(hba->dev, "%s: Failed to set affinity hint to cpu %d for ESI %d, err = %d\n",
-					__func__, cpu, desc->irq, ret);
+			dev_err(hba->dev, "%s: Failed to set affinity hint to cpu for ESI %d, err = %d\n",
+					__func__, desc->irq, ret);
 		i++;
 	}
 	ufs_qcom_msi_unlock_descs(hba);
@@ -2095,6 +2155,23 @@ static struct qcom_bus_scale_data *ufs_qcom_get_bus_scale_data(struct device
 	return qsd;
 err:
 	return NULL;
+}
+
+/**
+ * ufs_qcom_enable_crash_on_err - read from DTS whether crash_on_err
+ * should be enabled during boot.
+ * @hba: per adapter instance
+ */
+static void ufs_qcom_enable_crash_on_err(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	struct device *dev = hba->dev;
+	struct device_node *np = dev->of_node;
+
+	if (!np)
+		return;
+	host->crash_on_err =
+		of_property_read_bool(np, "qcom,enable_crash_on_err");
 }
 
 static int ufs_qcom_bus_register(struct ufs_qcom_host *host)
@@ -3148,15 +3225,6 @@ static void ufs_qcom_parse_irq_affinity(struct ufs_hba *hba)
 			dev_err(dev, "Invalid group silver mask\n");
 			host->def_mask.bits[0] = UFS_QCOM_IRQ_SLVR_MASK;
 		}
-		mask = 0;
-		of_property_read_u32(np, "qcom,esi-affinity-mask", &mask);
-		host->esi_affinity_mask.bits[0] = mask;
-		if (!cpumask_subset(&host->esi_affinity_mask,
-				    cpu_possible_mask)) {
-			dev_err(dev, "Invalid group ESI affinity mask\n");
-			host->esi_affinity_mask.bits[0] =
-					UFS_QCOM_ESI_AFFINITY_MASK;
-		}
 	}
 	/* If device includes perf mask, enable dynamic irq affinity feature */
 	if (host->perf_mask.bits[0])
@@ -3576,11 +3644,16 @@ static void ufs_qcom_parse_broken_ahit_workaround_flag(struct ufs_qcom_host *hos
 	host->broken_ahit_wa = of_property_read_bool(np, str);
 }
 
-static void ufs_qcom_set_rate_a(struct ufs_qcom_host *host)
+/*
+ * Read sdam register for ufs device identification using
+ * nvmem interface and accordingly set phy submode.
+ */
+static void ufs_qcom_read_nvmem_cell(struct ufs_qcom_host *host)
 {
 	size_t len;
 	u8 *data;
 	struct nvmem_cell *nvmem_cell;
+	struct device_node *np = host->hba->dev->of_node;
 
 	nvmem_cell = nvmem_cell_get(host->hba->dev, "ufs_dev");
 	if (IS_ERR(nvmem_cell)) {
@@ -3596,12 +3669,38 @@ static void ufs_qcom_set_rate_a(struct ufs_qcom_host *host)
 
 	/*
 	 * data equal to zero shows that ufs 2.x card is connected while
-	 * non-zero value shows that ufs 3.x card is connected
+	 * non-zero value shows that ufs 3.x card is connected. Below are
+	 * the default values
+	 * sdam Value = 0 : UFS 2.x, phy_submode = 0.
+	 * sdam Value = 1 : UFS 3.x, phy_submode = 1.
+	 *
+	 * But also bit value to identify ufs device is not consistent
+	 * across the targets it could be bit[0] = 0/1 for UFS2.x/3x
+	 * and vice versa. If the bit[x] value is not same as default
+	 * value used in driver and if its reverted then use flag
+	 * qcom,ufs-dev-revert to identify ufs device.
+	 * Then revert values to get as below
+	 * data = 0 : UFS 2.x
+	 * data = 1 : UFS 3.x
 	 */
-	if (*data) {
-		host->limit_rate = PA_HS_MODE_A;
-		dev_dbg(host->hba->dev, "UFS 3.x device is detected, Mode is set to RATE A\n");
+	if (of_property_read_bool(np, "qcom,ufs-dev-revert"))
+		host->limit_phy_submode = !(*data);
+	else
+		host->limit_phy_submode = *data;
+
+	if (host->limit_phy_submode) {
+		dev_info(host->hba->dev, "(%s) UFS device is 3.x, phy_submode = %d\n",
+				__func__, host->limit_phy_submode);
+
+		if (of_property_read_bool(np, "limit-rate-ufs3")) {
+			host->limit_rate = PA_HS_MODE_A;
+			dev_dbg(host->hba->dev, "UFS 3.x device Mode is set to RATE A\n");
+		}
 	}
+
+	else
+		dev_info(host->hba->dev, "(%s) UFS device is 2.x, phy_submode = %d\n",
+				__func__, host->limit_phy_submode);
 
 	kfree(data);
 
@@ -3640,6 +3739,8 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 #if defined(CONFIG_UFS_DBG)
 	host->dbg_en = true;
 #endif
+
+	ufs_qcom_enable_crash_on_err(hba);
 
 	/* Setup the optional reset control of HCI */
 	host->core_reset = devm_reset_control_get_optional(hba->dev, "rst");
@@ -3798,6 +3899,7 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 
 	ufs_qcom_save_host_ptr(hba);
 
+	ufs_qcom_populate_available_cpus(hba);
 	ufs_qcom_qos_init(hba);
 	ufs_qcom_parse_irq_affinity(hba);
 	ufs_qcom_ber_mon_init(hba);
@@ -4736,6 +4838,7 @@ static void ufs_qcom_parse_limits(struct ufs_qcom_host *host)
 	struct device_node *np = host->hba->dev->of_node;
 	u32 dev_major = 0, dev_minor = 0;
 	u32 val;
+	u32 ufs_dev_types = 0;
 
 	if (!np)
 		return;
@@ -4779,8 +4882,19 @@ static void ufs_qcom_parse_limits(struct ufs_qcom_host *host)
 	of_property_read_u32(np, "limit-rate", &host->limit_rate);
 	of_property_read_u32(np, "limit-phy-submode", &host->limit_phy_submode);
 
-	if (of_property_read_bool(np, "limit-rate-ufs3"))
-		ufs_qcom_set_rate_a(host);
+	/*
+	 * ufs-dev-types and ufs_dev nvmem enties are for ufs device
+	 * identification using nvmem interface. Use number of
+	 * ufs devices supported in SoC for ufs-dev-types, and nvmem
+	 * handle added by pmic for sdam register access.
+	 *
+	 * Default value taken by driver is bit[x] = 1 for UFS 3.x and
+	 * bit[x] = 0 for UFS 2.x driver code takes this as default case.
+	 */
+	of_property_read_u32(np, "ufs-dev-types", &ufs_dev_types);
+
+	if (of_property_read_bool(np, "limit-rate-ufs3") || ufs_dev_types)
+		ufs_qcom_read_nvmem_cell(host);
 }
 
 /*
@@ -5502,7 +5616,7 @@ static void ufs_qcom_hook_send_command(void *param, struct ufs_hba *hba,
 			/* The dev cmd would not be logged in MCQ mode provisionally */
 			u32 utag = (rq->mq_hctx->queue_num << BLK_MQ_UNIQUE_TAG_BITS) |
 						(rq->tag & BLK_MQ_UNIQUE_TAG_MASK);
-			u32 idx = blk_mq_unique_tag_to_hwq(utag) + 1;
+			u32 idx = blk_mq_unique_tag_to_hwq(utag);
 			struct ufs_hw_queue *hwq = &hba->uhq[idx];
 
 			ufs_qcom_log_str(host, "<,%x,%d,%d,%d\n",
@@ -5565,7 +5679,7 @@ static void ufs_qcom_hook_compl_command(void *param, struct ufs_hba *hba,
 			/* The dev cmd would not be logged in MCQ mode provisionally */
 			u32 utag = (rq->mq_hctx->queue_num << BLK_MQ_UNIQUE_TAG_BITS) |
 						(rq->tag & BLK_MQ_UNIQUE_TAG_MASK);
-			u32 idx = blk_mq_unique_tag_to_hwq(utag) + 1;
+			u32 idx = blk_mq_unique_tag_to_hwq(utag);
 			struct ufs_hw_queue *hwq = &hba->uhq[idx];
 
 			ufs_qcom_log_str(host, ">,%x,%d,%d,%d\n",
@@ -5818,6 +5932,28 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/**
+ * ufs_qcom_enable_vccq_shutdown - read from DTS whether vccq_shutdown
+ * should be enabled for putting additional vote on VCCQ LDO during shutdown.
+ * @hba: per adapter instance
+ */
+
+static void ufs_qcom_enable_vccq_shutdown(struct ufs_hba *hba)
+{
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+	int err;
+
+	err = ufs_qcom_parse_reg_info(host, "qcom,vccq-shutdown",
+			&host->vccq_shutdown);
+
+	if (host->vccq_shutdown) {
+		err = ufs_qcom_enable_vreg(hba->dev, host->vccq_shutdown);
+		if (err)
+			dev_err(hba->dev, "%s: failed enable vccq_shutdown err=%d\n",
+						__func__, err);
+	}
+}
+
 static void ufs_qcom_shutdown(struct platform_device *pdev)
 {
 	struct ufs_hba *hba;
@@ -5834,6 +5970,10 @@ static void ufs_qcom_shutdown(struct platform_device *pdev)
 	ufs_qcom_log_str(host, "0xdead\n");
 	if (host->dbg_en)
 		trace_ufs_qcom_shutdown(dev_name(hba->dev));
+
+	/* put an additional vote on UFS VCCQ LDO if required */
+	ufs_qcom_enable_vccq_shutdown(hba);
+
 	ufshcd_pltfrm_shutdown(pdev);
 
 	/* UFS_RESET TLMM register cannot reset to POR value '1' after warm

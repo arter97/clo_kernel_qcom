@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/scmi_protocol.h>
@@ -198,8 +198,8 @@ static ssize_t store_##name(struct kobject *kobj,			\
 {									\
 	int ret, i = 0;							\
 	char *s = kstrdup(buf, GFP_KERNEL);				\
-	unsigned int msg[2] = {0};						\
-	char *str;							\
+	unsigned int msg[2] = {0};					\
+	char *str, *s_orig = s;						\
 									\
 	while (((str = strsep(&s, " ")) != NULL) && i < 2) {		\
 		ret = kstrtouint(str, 10, &msg[i]);			\
@@ -212,8 +212,8 @@ static ssize_t store_##name(struct kobject *kobj,			\
 									\
 	pr_info("Input threshold :%lu for cluster :%lu\n", msg[1], msg[0]);\
 	ret = set_##name(msg, sizeof(msg));				\
-out:		\
-	kfree(s);		\
+out:									\
+	kfree(s_orig);							\
 	return ((ret < 0) ? ret : count);				\
 }									\
 
@@ -334,6 +334,7 @@ static struct platform_driver c1dcvs_v2_driver = {
 	.driver = {
 		.name = "c1dcvs-v2",
 		.of_match_table = c1dcvs_v2,
+		.suppress_bind_attrs = true,
 	},
 	.probe = scmi_c1dcvs_probe,
 };

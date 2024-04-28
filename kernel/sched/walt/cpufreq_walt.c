@@ -5,7 +5,7 @@
  *
  * Copyright (C) 2016, Intel Corporation
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -320,6 +320,10 @@ static unsigned int get_next_freq(struct waltgov_policy *wg_policy,
 	if (freq > fmax_cap[PARTIAL_HALT_CAP][cluster->id]) {
 		freq = fmax_cap[PARTIAL_HALT_CAP][cluster->id];
 		wg_driv_cpu->reasons |= CPUFREQ_REASON_PARTIAL_HALT_CAP;
+	}
+	if (freq > fmax_cap[FREQ_REL_CAP][cluster->id]) {
+		freq = fmax_cap[FREQ_REL_CAP][cluster->id];
+		wg_driv_cpu->reasons |= CPUFREQ_REASON_FREQ_REL_CAP;
 	}
 
 	if (wg_policy->cached_raw_freq && freq == wg_policy->cached_raw_freq &&
@@ -769,12 +773,17 @@ int cpufreq_walt_set_adaptive_freq(unsigned int cpu, unsigned int adaptive_low_f
 				   unsigned int adaptive_high_freq)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
-	struct cpufreq_policy *policy = wg_policy->policy;
+	struct waltgov_policy *wg_policy;
+	struct cpufreq_policy *policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
+	policy = wg_policy->policy;
 	if (policy->min <= adaptive_low_freq && policy->max >= adaptive_high_freq) {
 		wg_policy->tunables->adaptive_low_freq_kernel = adaptive_low_freq;
 		wg_policy->tunables->adaptive_high_freq_kernel = adaptive_high_freq;
@@ -799,11 +808,15 @@ int cpufreq_walt_get_adaptive_freq(unsigned int cpu, unsigned int *adaptive_low_
 				   unsigned int *adaptive_high_freq)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
+	struct waltgov_policy *wg_policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
 	if (adaptive_low_freq && adaptive_high_freq) {
 		*adaptive_low_freq = get_adaptive_low_freq(wg_policy);
 		*adaptive_high_freq = get_adaptive_high_freq(wg_policy);
@@ -825,11 +838,15 @@ EXPORT_SYMBOL_GPL(cpufreq_walt_get_adaptive_freq);
 int cpufreq_walt_reset_adaptive_freq(unsigned int cpu)
 {
 	struct waltgov_cpu *wg_cpu = &per_cpu(waltgov_cpu, cpu);
-	struct waltgov_policy *wg_policy = wg_cpu->wg_policy;
+	struct waltgov_policy *wg_policy;
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (!cpu_possible(cpu))
 		return -EFAULT;
 
+	wg_policy = wg_cpu->wg_policy;
 	wg_policy->tunables->adaptive_low_freq_kernel = 0;
 	wg_policy->tunables->adaptive_high_freq_kernel = 0;
 
@@ -1211,9 +1228,8 @@ static void waltgov_limits(struct cpufreq_policy *policy)
 			 * to do any sort of additional validation here.
 			 */
 			final_freq = cpufreq_driver_resolve_freq(policy, freq);
-
-			if (waltgov_update_next_freq(wg_policy, now, final_freq,
-				final_freq)) {
+			if (wg_policy->next_freq != final_freq) {
+				__waltgov_update_next_freq(wg_policy, now, final_freq, final_freq);
 				waltgov_fast_switch(wg_policy, now, final_freq);
 			}
 		}

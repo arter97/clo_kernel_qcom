@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"eusb2_phy: %s: " fmt, __func__
@@ -765,6 +766,10 @@ static int msm_eusb2_phy_init(struct usb_phy *uphy)
 
 	msm_eusb2_write_readback(phy->base, USB_PHY_HS_PHY_CTRL2,
 			USB2_SUSPEND_N_SEL, 0);
+
+	msm_eusb2_write_readback(phy->base, USB_PHY_CFG0,
+			CMN_CTRL_OVERRIDE_EN, 0x00);
+
 	return 0;
 }
 
@@ -794,7 +799,7 @@ static int msm_eusb2_phy_set_suspend(struct usb_phy *uphy, int suspend)
 		}
 
 		/* With EUD spoof disconnect, keep clk and ldos on */
-		if (phy->phy.flags & EUD_SPOOF_DISCONNECT)
+		if ((phy->phy.flags & EUD_SPOOF_DISCONNECT) || is_eud_debug_mode_active(phy))
 			goto suspend_exit;
 
 		msm_eusb2_phy_clocks(phy, false);
@@ -805,6 +810,7 @@ static int msm_eusb2_phy_set_suspend(struct usb_phy *uphy, int suspend)
 		usb_repeater_powerdown(phy->ur);
 	} else {
 		/* Bus resume and cable connect handling */
+		msm_eusb2_phy_power(phy, true);
 		msm_eusb2_phy_clocks(phy, true);
 	}
 

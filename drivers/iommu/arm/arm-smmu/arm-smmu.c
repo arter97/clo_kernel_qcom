@@ -42,6 +42,7 @@
 #include <soc/qcom/secure_buffer.h>
 #include <linux/irq.h>
 #include <linux/wait.h>
+#include <trace/hooks/iommu.h>
 
 #include <linux/fsl/mc.h>
 
@@ -52,6 +53,7 @@
 #include "../../qcom-dma-iommu-generic.h"
 #include "../../qcom-io-pgtable-alloc.h"
 #include <linux/qcom-iommu-util.h>
+#include <linux/suspend.h>
 
 #define CREATE_TRACE_POINTS
 #include "arm-smmu-trace.h"
@@ -2931,8 +2933,10 @@ static void arm_smmu_device_reset(struct arm_smmu_device *smmu)
 	 * Reset stream mapping groups: Initial values mark all SMRn as
 	 * invalid and all S2CRn as bypass unless overridden.
 	 */
+	mutex_lock(&smmu->stream_map_mutex);
 	for (i = 0; i < smmu->num_mapping_groups; ++i)
 		arm_smmu_write_sme(smmu, i);
+	mutex_unlock(&smmu->stream_map_mutex);
 
 	/* Make sure all context banks are disabled and clear CB_FSR  */
 	for (i = 0; i < smmu->num_context_banks; ++i) {
@@ -3069,8 +3073,9 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 			if (!handoff_smrs[index].valid)
 				continue;
 
-			if ((handoff_smrs[index].mask & smrs.mask) == handoff_smrs[index].mask &&
-			    !((handoff_smrs[index].id ^ smrs.id) & ~smrs.mask)) {
+			/* smrs is subset of handoff_smrs */
+			if ((handoff_smrs[index].mask & smrs.mask) == smrs.mask &&
+			    !((handoff_smrs[index].id ^ smrs.id) & ~handoff_smrs[index].mask)) {
 
 				dev_dbg(smmu->dev,
 					"handoff-smrs match idx %d, id, 0x%x, mask 0x%x\n",
@@ -3499,6 +3504,17 @@ static void arm_smmu_rmr_install_bypass_smr(struct arm_smmu_device *smmu)
 	iort_put_rmr_sids(dev_fwnode(smmu->dev), &rmr_list);
 }
 
+/* skip pcie iommu bus probe if smmuv2 and smmuv3 both enabled. */
+#if IS_ENABLED(CONFIG_ARM_PARAVIRT_SMMU_V3)
+static void arm_smmu_iommu_pcie_device_probe(void *data, struct iommu_device *iommu,
+					struct bus_type *bus, bool *skip)
+{
+	if (iommu != (struct iommu_device *)data)
+		return;
+	*skip = !strcmp(bus->name, "pci");
+}
+#endif
+
 static int arm_smmu_device_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -3633,6 +3649,11 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 		goto out_power_off;
 	}
 
+	#if IS_ENABLED(CONFIG_ARM_PARAVIRT_SMMU_V3)
+	if (of_find_compatible_node(NULL, NULL, "arm,virt-smmu-v3"))
+		register_trace_android_vh_bus_iommu_probe(arm_smmu_iommu_pcie_device_probe,
+							(void *)&smmu->iommu);
+	#endif
 	err = iommu_device_register(&smmu->iommu, &arm_smmu_ops.iommu_ops, dev);
 	if (err) {
 		dev_err(dev, "Failed to register iommu\n");
@@ -3732,7 +3753,7 @@ static int __maybe_unused arm_smmu_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
+static int __maybe_unused arm_smmu_pm_resume_common(struct device *dev)
 {
 	int ret;
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
@@ -3758,24 +3779,6 @@ static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
 	arm_smmu_device_reset(smmu);
 	return ret;
 }
-
-static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
-{
-	int ret = 0;
-	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
-
-	if (pm_runtime_suspended(dev))
-		goto clk_unprepare;
-
-	ret = arm_smmu_runtime_suspend(dev);
-	if (ret)
-		return ret;
-
-clk_unprepare:
-	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
-	return ret;
-}
-
 
 static int arm_smmu_pm_prepare(struct device *dev)
 {
@@ -3827,7 +3830,7 @@ static int __maybe_unused arm_smmu_pm_restore_early(struct device *dev)
 		smmu_domain->pgtbl_ops = pgtbl_ops;
 		arm_smmu_init_context_bank(smmu_domain, pgtbl_cfg);
 	}
-	arm_smmu_pm_resume(dev);
+	arm_smmu_pm_resume_common(dev);
 	ret = arm_smmu_runtime_suspend(dev);
 	if (ret) {
 		dev_err(dev, "Failed to suspend\n");
@@ -3841,7 +3844,13 @@ static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 	struct arm_smmu_domain *smmu_domain;
 	struct arm_smmu_cb *cb;
-	int idx;
+	int idx, ret;
+
+	ret = arm_smmu_power_on(smmu->pwr);
+	if (ret) {
+		dev_err(smmu->dev, "Couldn't power on the smmu during pm freeze: %d\n", ret);
+		return ret;
+	}
 
 	for (idx = 0; idx < smmu->num_context_banks; idx++) {
 		cb = &smmu->cbs[idx];
@@ -3853,7 +3862,37 @@ static int __maybe_unused arm_smmu_pm_freeze_late(struct device *dev)
 			}
 		}
 	}
+
+	arm_smmu_power_off(smmu, smmu->pwr);
 	return 0;
+}
+
+static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
+{
+	int ret = 0;
+	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
+
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return arm_smmu_pm_freeze_late(dev);
+
+	if (pm_runtime_suspended(dev))
+		goto clk_unprepare;
+
+	ret = arm_smmu_runtime_suspend(dev);
+	if (ret)
+		return ret;
+
+clk_unprepare:
+	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
+	return ret;
+}
+
+static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
+{
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return arm_smmu_pm_restore_early(dev);
+	else
+		return arm_smmu_pm_resume_common(dev);
 }
 
 static const struct dev_pm_ops arm_smmu_pm_ops = {

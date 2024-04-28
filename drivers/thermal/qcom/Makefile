@@ -4,6 +4,7 @@ qcom_tsens-y			+= tsens.o tsens-v2.o tsens-v1.o tsens-v0_1.o \
 				   tsens-8960.o
 
 obj-$(CONFIG_QCOM_SPMI_ADC_TM5)	+= qcom-spmi-adc-tm5.o
+obj-$(CONFIG_QCOM_SPMI_MBG_TM)	+= qcom-spmi-mbg-tm.o
 obj-$(CONFIG_QCOM_SPMI_TEMP_ALARM)	+= qcom-spmi-temp-alarm.o
 obj-$(CONFIG_QCOM_LMH)		+= lmh.o
 obj-$(CONFIG_QTI_CPU_PAUSE_COOLING_DEVICE) += thermal_pause.o
@@ -32,3 +33,8 @@ obj-$(CONFIG_THERMAL_TSENS_LEGACY)	+= msm-tsens-driver.o
 msm-tsens-driver-y			+= msm-tsens.o tsens2xxx.o tsens-dbg.o
 obj-$(CONFIG_QTI_CX_IPEAK_COOLING_DEVICE) += cx_ipeak_cdev.o
 obj-$(CONFIG_QTI_RPM_SMD_COOLING_DEVICE) += rpm_smd_cooling_device.o
+obj-$(CONFIG_REGULATOR_COOLING_DEVICE) += regulator_cdev.o
+obj-$(CONFIG_QTI_QMI_SENSOR) += qti_qmi_sensor.o
+qti_qmi_sensor-y += thermal_sensor_service_v01.o qmi_sensors.o
+obj-$(CONFIG_QTI_DEVFREQ_VDD_COOLING_DEVICE) += devfreq_vdd_cdev.o
+obj-$(CONFIG_QTI_GPU_DUMP_SKIP_COOLING_DEVICE) += gpu_dump_skip_cdev.o

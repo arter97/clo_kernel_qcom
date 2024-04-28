@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/mhi.h>
@@ -62,9 +62,13 @@ static int __qcom_mhi_qrtr_send(struct qrtr_endpoint *ep, struct sk_buff *skb)
 	if (skb->sk)
 		sock_hold(skb->sk);
 
-	rc = wait_for_completion_interruptible(&qdev->prepared);
-	if (rc)
+	rc = wait_for_completion_interruptible_timeout(&qdev->prepared, msecs_to_jiffies(5000));
+	if (rc <= 0) {
+		pr_err("%s : timeout:%d\n", __func__, rc);
+		if (rc == 0)
+			rc = -ETIMEDOUT;
 		goto free_skb;
+	}
 
 	rc = skb_linearize(skb);
 	if (rc)
@@ -91,11 +95,10 @@ static int qcom_mhi_qrtr_send(struct qrtr_endpoint *ep, struct sk_buff *skb)
 	int rc;
 
 	do {
+		reinit_completion(&qdev->ringfull);
 		rc = __qcom_mhi_qrtr_send(ep, skb);
-		if (rc == -EAGAIN) {
-			reinit_completion(&qdev->ringfull);
+		if (rc == -EAGAIN)
 			wait_for_completion(&qdev->ringfull);
-		}
 	} while (rc == -EAGAIN);
 
 	return rc;
