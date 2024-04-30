@@ -67,6 +67,7 @@ obj-$(CONFIG_QCS_GCC_404) += gcc-qcs404.o
 obj-$(CONFIG_QCS_Q6SSTOP_404) += q6sstop-qcs404.o
 obj-$(CONFIG_QCS_TURING_404) += turingcc-qcs404.o
 obj-$(CONFIG_QDU_GCC_1000) += gcc-qdu1000.o
+obj-$(CONFIG_SA_CAMCC_8775P) += camcc-sa8775p.o
 obj-$(CONFIG_SC_CAMCC_7180) += camcc-sc7180.o
 obj-$(CONFIG_SC_CAMCC_7280) += camcc-sc7280.o
 obj-$(CONFIG_SC_DISPCC_7180) += dispcc-sc7180.o
