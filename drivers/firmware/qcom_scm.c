@@ -230,6 +230,7 @@ static enum qcom_scm_convention __get_convention(void)
 		goto found;
 	}
 #endif
+
 	probed_convention = SMC_CONVENTION_ARM_32;
 	ret = __scm_smc_call(NULL, &desc, probed_convention, &res, true);
 	if (!ret && res.result[0] == 1)

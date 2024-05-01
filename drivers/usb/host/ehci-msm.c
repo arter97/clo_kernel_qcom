@@ -2,11 +2,11 @@
 /* ehci-msm.c - HSUSB Host Controller Driver Implementation
  *
  * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Partly derived from ehci-fsl.c and ehci-hcd.c
  * Copyright (c) 2000-2004 by David Brownell
  * Copyright (c) 2005 MontaVista Software
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * All source code in this file is licensed under the following license except
  * where indicated.
@@ -41,7 +41,7 @@
 
 #define MSM_USB_BASE (hcd->regs)
 
-#define DRIVER_DESC "Qualcomm On-Chip EHCI Host Controller"
+#define DRIVER_DESC "EHCI Host Controller"
 
 static const char hcd_name[] = "ehci-msm";
 static struct hc_driver __read_mostly msm_hc_driver;

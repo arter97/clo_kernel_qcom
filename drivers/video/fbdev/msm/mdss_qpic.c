@@ -28,7 +28,6 @@
 #include <linux/regulator/consumer.h>
 #include <linux/semaphore.h>
 #include <linux/uaccess.h>
-#include <linux/bootmem.h>
 #include <linux/dma-mapping.h>
 
 #include <linux/msm-sps.h>
