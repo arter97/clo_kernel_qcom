@@ -4732,7 +4732,7 @@ static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
 	return rxqueue;
 }
 
-#ifdef CONFIG_ENABLE_SFE
+#if IS_ENABLED(CONFIG_ENABLE_SFE)
 int (*athrs_fast_nat_recv)(struct sk_buff *skb,
 			   struct packet_type *pt_temp) __rcu __read_mostly;
 EXPORT_SYMBOL(athrs_fast_nat_recv);
@@ -5376,6 +5376,17 @@ skip_taps:
 #endif
 	skb_reset_redirect(skb);
 skip_classify:
+	if (IS_ENABLED(CONFIG_ENABLE_SFE)) {
+		int (*fast_recv)(struct sk_buff *skb, struct packet_type *pt_temp);
+
+		fast_recv = rcu_dereference(athrs_fast_nat_recv);
+		if (fast_recv) {
+			if (fast_recv(skb, pt_prev)) {
+				ret = NET_RX_SUCCESS;
+				goto out;
+			}
+		}
+	}
 	if (pfmemalloc && !skb_pfmemalloc_protocol(skb))
 		goto drop;
 
