@@ -244,9 +244,6 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 	if (!hdr || !skb)
 		return;
 
-	if (!node->ilc)
-		return;
-
 	type = le32_to_cpu(hdr->type);
 	if (type == QRTR_TYPE_DATA) {
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pl_buf, sizeof(pl_buf));
@@ -292,9 +289,6 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 	u64 pl_buf = 0;
 
 	if (!skb)
-		return;
-
-	if (!node->ilc)
 		return;
 
 	cb = (struct qrtr_cb *)skb->cb;
@@ -1409,7 +1403,6 @@ int qrtr_endpoint_register(struct qrtr_endpoint *ep, unsigned int net_id,
 	node->ep = ep;
 	atomic_set(&node->hello_sent, 0);
 	atomic_set(&node->hello_rcvd, 0);
-	node->ilc = NULL;
 
 	kthread_init_work(&node->read_data, qrtr_node_rx_work);
 	kthread_init_work(&node->say_hello, qrtr_hello_work);
@@ -1523,10 +1516,8 @@ void qrtr_endpoint_unregister(struct qrtr_endpoint *ep)
 	unsigned long flags;
 	void __rcu **slot;
 
-	ipc_log_context_destroy(node->ilc);
 	mutex_lock(&node->ep_lock);
 	node->ep = NULL;
-	node->ilc = NULL;
 	mutex_unlock(&node->ep_lock);
 
 	/* Notify the local controller about the event */
