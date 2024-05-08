@@ -10,7 +10,6 @@ def define_niobe():
         # TODO: Need to add GKI modules
         "arch/arm64/gunyah/gh_arm_drv.ko",
         "drivers/base/regmap/qti-regmap-debugfs.ko",
-        "drivers/bus/mhi/devices/mhi_dev_satellite.ko",
         "drivers/bus/mhi/devices/mhi_dev_uci.ko",
         "drivers/bus/mhi/host/mhi.ko",
         "drivers/char/rdbg.ko",
@@ -153,6 +152,7 @@ def define_niobe():
         "drivers/soc/qcom/memshare/heap_mem_ext_v01.ko",
         "drivers/soc/qcom/memshare/msm_memshare.ko",
         "drivers/soc/qcom/minidump.ko",
+        "drivers/soc/qcom/panel_event_notifier.ko",
         "drivers/soc/qcom/pdr_interface.ko",
         "drivers/soc/qcom/pmic-glink-debug.ko",
         "drivers/soc/qcom/pmic-pon-log.ko",
