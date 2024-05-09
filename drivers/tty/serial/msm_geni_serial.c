@@ -5834,6 +5834,7 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 			mutex_unlock(&tty_port->mutex);
 			return -EBUSY;
 		}
+		geni_se_ssc_clk_enable(&port->rsc, false);
 		UART_LOG_DBG(port->ipc_log_pwr, dev, "%s end %d\n", __func__, true);
 		mutex_unlock(&tty_port->mutex);
 	}
@@ -5864,6 +5865,7 @@ static int msm_geni_serial_sys_hib_resume(struct device *dev)
 		 * open the port during hibernation.
 		 */
 		port->port_setup = false;
+		geni_se_ssc_clk_enable(&port->rsc, true);
 	}
 	UART_LOG_DBG(port->ipc_log_pwr, dev, "%s: End %d\n", __func__, true);
 	return 0;
@@ -5908,6 +5910,7 @@ static int msm_geni_serial_sys_resume(struct device *dev)
 		IPC_LOG_MSG(port->console_log, "%s start %d\n", __func__, true);
 		uart_resume_port((struct uart_driver *)uport->private_data,
 									uport);
+		geni_se_ssc_clk_enable(&port->rsc, true);
 		IPC_LOG_MSG(port->console_log, "%s end %d", __func__, true);
 	}
 	geni_capture_stop_time(&port->se, port->ipc_log_kpi,

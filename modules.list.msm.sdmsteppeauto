@@ -89,3 +89,8 @@ videocc-sm6150.ko
 debugcc-sm6150.ko
 scc-sm6150.ko
 dispcc-sm6150.ko
+qcom_glink.ko
+qcom_smd.ko
+qcom_glink_smem.ko
+rproc_qcom_common.ko
+qcom-geni-se-ssc.ko
