@@ -449,7 +449,6 @@ config PAGE_POOL_STATS
 #Shortcut-forwarding-engine
 config ENABLE_SFE
 	bool "Enable Shortcut-forwarding-engine"
-	depends on QGKI
 	help
 	  ENABLE_SFE enables software acceleration on the target.
           The change supports Shortcut forwarding engine feature.
