@@ -212,7 +212,7 @@ void geni_se_ssc_clk_enable(struct geni_se_rsc *rsc, bool enable);
 
 #else
 
-void geni_se_ssc_clk_enable(struct geni_se_rsc *rsc, bool enable)
+static void geni_se_ssc_clk_enable(struct geni_se_rsc *rsc, bool enable)
 { }
 
 #endif
