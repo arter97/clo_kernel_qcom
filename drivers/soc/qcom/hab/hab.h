@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __HAB_H
 #define __HAB_H
@@ -335,6 +335,12 @@ struct uhab_context {
 	int closing;
 	int kernel;
 	int owner;
+	/*
+	 * only used for user-space hab client
+	 * if created through /dev/hab-* node, mmid_grp_index = MMID / 100
+	 * if created through /dev/hab node, mmid_grp_index = 0
+	 */
+	int mmid_grp_index;
 
 	int lb_be; /* loopback only */
 };
@@ -356,10 +362,12 @@ struct local_vmid {
 };
 
 struct hab_driver {
-	struct device *dev; /* mmid dev list */
-	struct cdev cdev;
+	/* hab driver has many char devices, so we need an array of struct device pointers. */
+	struct device **dev;
+	struct cdev *cdev;
 	dev_t major;
 	struct class *class;
+
 	int ndevices;
 	struct hab_device *devp;
 	struct uhab_context *kctx;
@@ -606,7 +614,8 @@ int hab_open_listen(struct uhab_context *ctx,
 		struct hab_device *dev,
 		struct hab_open_request *listen,
 		struct hab_open_request **recv_request,
-		int ms_timeout);
+		int ms_timeout,
+		uint32_t flags);
 
 struct virtual_channel *hab_vchan_alloc(struct uhab_context *ctx,
 		struct physical_channel *pchan, int openid);
@@ -757,4 +766,5 @@ int hab_stat_log(struct physical_channel **pchans, int pchan_cnt, char *dest,
 			int dest_size);
 int hab_stat_buffer_print(char *dest,
 		int dest_size, const char *fmt, ...);
+int hab_create_cdev_node(int mmid_grp_index);
 #endif /* __HAB_H */

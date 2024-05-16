@@ -187,6 +187,16 @@ int msm_pcie_deregister_event(struct msm_pcie_register_event *reg);
  */
 int msm_pcie_enumerate(u32 rc_idx);
 
+/**
+ * msm_pcie_deenumerate - deenumerates the Endpoints.
+ * @rc_idx:	RC that Endpoints connect to.
+ *
+ * This function de-enumerates Endpoints connected to RC.
+ *
+ * Return: 0 on success, negative value on error
+ */
+int msm_pcie_deenumerate(u32 rc_idx);
+
 /*
  * msm_pcie_debug_info - run a PCIe specific debug testcase.
  * @dev:	pci device structure
@@ -215,6 +225,17 @@ int msm_pcie_debug_info(struct pci_dev *dev, u32 option, u32 base,
  */
 int msm_pcie_reg_dump(struct pci_dev *pci_dev, u8 *buff, u32 len);
 
+/*
+ * msm_pcie_dsp_link_control - enable/disable DSP link
+ * @pci_dev:	pci device structure, endpoint of this DSP
+ * @link_enable true to enable, false to disable
+ *
+ * This function enable(include training)/disable link between PCIe
+ * switch DSP and endpoint attached.
+ * Return: 0 on success, negative value on error
+ */
+int msm_pcie_dsp_link_control(struct pci_dev *pci_dev,
+				    bool link_enable);
 #else /* !CONFIG_PCI_MSM */
 static inline int msm_pcie_pm_control(enum msm_pcie_pm_opt pm_opt, u32 busnr,
 			void *user, void *data, u32 options)
@@ -262,6 +283,11 @@ static inline int msm_pcie_enumerate(u32 rc_idx)
 	return -ENODEV;
 }
 
+static inline int msm_pcie_deenumerate(u32 rc_idx)
+{
+	return -ENODEV;
+}
+
 static inline int msm_pcie_debug_info(struct pci_dev *dev, u32 option, u32 base,
 			u32 offset, u32 mask, u32 value)
 {
@@ -269,6 +295,12 @@ static inline int msm_pcie_debug_info(struct pci_dev *dev, u32 option, u32 base,
 }
 
 static inline int msm_pcie_reg_dump(struct pci_dev *pci_dev, u8 *buff, u32 len)
+{
+	return -ENODEV;
+}
+
+static inline int msm_pcie_dsp_link_control(struct pci_dev *pci_dev,
+						  bool link_enable)
 {
 	return -ENODEV;
 }
