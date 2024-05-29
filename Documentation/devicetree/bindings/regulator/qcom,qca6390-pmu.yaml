@@ -18,6 +18,7 @@ properties:
   compatible:
     enum:
       - qcom,qca6390-pmu
+      - qcom,wcn6855-pmu
       - qcom,wcn7850-pmu
 
   vdd-supply:
@@ -58,6 +59,12 @@ properties:
 
   vddio-supply:
     description: VDD_IO supply regulator handle
+
+  vddctrl1-supply:
+    description: VDD_CTRL1 supply regulator handle
+
+  vddctrl1-supply:
+    description: VDD_CTRL2 supply regulator handle
 
   wlan-enable-gpios:
     maxItems: 1
@@ -104,6 +111,19 @@ allOf:
         - vddpcie1p3-supply
         - vddpcie1p9-supply
         - vddio-supply
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: qcom,wcn6855-pmu
+    then:
+      required:
+        - vddaon-supply
+        - vddvm-supply
+        - vddvl-supply
+        - vddvh-supply
+        - vddctrl1-supply
+        - vddctrl2-supply
   - if:
       properties:
         compatible:
