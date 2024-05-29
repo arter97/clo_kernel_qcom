@@ -27,6 +27,7 @@
 #define Q2SPI_MAX_RESP_BUF		40
 #define Q2SPI_RESP_BUF_SIZE		SMA_BUF_SIZE
 #define XFER_TIMEOUT_OFFSET		(250)
+#define Q2SPI_RESPONSE_WAIT_TIMEOUT	(1000)
 #define EXT_CR_TIMEOUT_MSECS		(50)
 #define TIMEOUT_MSECONDS		10 /* 10 milliseconds */
 #define RETRIES				1
@@ -58,6 +59,7 @@
 #define ADDR_LESS_RD_ACCESS		0x4
 #define BULK_ACCESS_STATUS		0x8
 #define CR_EXTENSION			0xF
+#define CR_ADDR_LESS_WR			0xE3
 #define CR_ADDR_LESS_RD			0xF4
 #define CR_BULK_ACCESS_STATUS		0x98
 
@@ -174,6 +176,8 @@
 #define QSPI_NUM_CS			2
 #define QSPI_BYTES_PER_WORD		4
 
+#define Q2SPI_RESP_BUF_RETRIES		(100)
+
 #define Q2SPI_INFO(q2spi_ptr, x...) do { \
 if (q2spi_ptr) { \
 	ipc_log_string(q2spi_ptr->ipc, x); \
@@ -205,6 +209,8 @@ if (q2spi_ptr) { \
 static unsigned int q2spi_max_speed;
 /* global storage for device Major number */
 static int q2spi_cdev_major;
+/* global variable for system restart case */
+static bool q2spi_sys_restart;
 
 enum abort_code {
 	TERMINATE_CMD = 0,
@@ -484,6 +490,8 @@ struct q2spi_dma_transfer {
  * @doorbell_pending: Set when independent doorbell CR received
  * @retry: used when independent doorbell processing is pending to retry the request from host
  * @alloc_count: reflects count of memory allocations done by q2spi_kzalloc
+ * @sma_wr_pending: set when previous CR SMA write packet pending
+ * @sma_rd_pending: set when previous CR SMA read packet pending
  * @resources_on: flag which reflects geni resources are turned on/off
  * @port_release: reflects if q2spi port is being closed
  * @is_suspend: reflects if q2spi driver is in system suspend
@@ -576,6 +584,10 @@ struct q2spi_geni {
 	atomic_t doorbell_pending;
 	atomic_t retry;
 	atomic_t alloc_count;
+	atomic_t sma_wr_pending;
+	atomic_t sma_rd_pending;
+	struct completion sma_wr_comp;
+	struct completion sma_rd_comp;
 	bool resources_on;
 	bool port_release;
 	atomic_t is_suspend;
@@ -709,5 +721,6 @@ void q2spi_geni_resources_off(struct q2spi_geni *q2spi);
 int __q2spi_send_messages(struct q2spi_geni *q2spi, void *ptr);
 int q2spi_wakeup_hw_through_gpio(struct q2spi_geni *q2spi);
 int q2spi_process_hrf_flow_after_lra(struct q2spi_geni *q2spi, struct q2spi_packet *q2spi_pkt);
+void q2spi_transfer_soft_reset(struct q2spi_geni *q2spi);
 
 #endif /* _SPI_Q2SPI_MSM_H_ */
