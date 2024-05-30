@@ -130,7 +130,6 @@ static unsigned int qrtr_wakeup_ms = CONFIG_QRTR_WAKEUP_MS;
 
 /* For local IPC logging context*/
 static void *qrtr_local_ilc;
-static void *qrtr_nid_ilc;
 
 /* for node ids */
 static RADIX_TREE(qrtr_nodes, GFP_ATOMIC);
@@ -248,7 +247,7 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 	type = le32_to_cpu(hdr->type);
 	if (type == QRTR_TYPE_DATA) {
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pl_buf, sizeof(pl_buf));
-		QRTR_INFO(qrtr_nid_ilc,
+		QRTR_INFO(node->ilc,
 			  "TX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] [%s]\n",
 			  hdr->size, hdr->confirm_rx,
 			  hdr->src_node_id, hdr->src_port_id,
@@ -259,7 +258,7 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pkt, sizeof(pkt));
 		if (type == QRTR_TYPE_NEW_SERVER ||
 		    type == QRTR_TYPE_DEL_SERVER)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x SVC[0x%x:0x%x] addr[0x%x:0x%x]\n",
 				  type, le32_to_cpu(pkt.server.service),
 				  le32_to_cpu(pkt.server.instance),
@@ -267,17 +266,17 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 				  le32_to_cpu(pkt.server.port));
 		else if (type == QRTR_TYPE_DEL_CLIENT ||
 			 type == QRTR_TYPE_RESUME_TX)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x addr[0x%x:0x%x]\n",
 				  type, le32_to_cpu(pkt.client.node),
 				  le32_to_cpu(pkt.client.port));
 		else if (type == QRTR_TYPE_HELLO ||
 			 type == QRTR_TYPE_BYE)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x node[0x%x]\n",
 				  type, hdr->src_node_id);
 		else if (type == QRTR_TYPE_DEL_PROC)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x node[0x%x]\n",
 				  type, pkt.proc.node);
 	}
@@ -296,7 +295,7 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 
 	if (cb->type == QRTR_TYPE_DATA) {
 		skb_copy_bits(skb, 0, &pl_buf, sizeof(pl_buf));
-		QRTR_INFO(qrtr_nid_ilc,
+		QRTR_INFO(node->ilc,
 			  "RX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x]\n",
 			  skb->len, cb->confirm_rx, cb->src_node, cb->src_port,
 			  cb->dst_node, cb->dst_port,
@@ -305,7 +304,7 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 		skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
 		if (cb->type == QRTR_TYPE_NEW_SERVER ||
 		    cb->type == QRTR_TYPE_DEL_SERVER)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "RX CTRL: cmd:0x%x SVC[0x%x:0x%x] addr[0x%x:0x%x]\n",
 				  cb->type, le32_to_cpu(pkt.server.service),
 				  le32_to_cpu(pkt.server.instance),
@@ -313,17 +312,17 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 				  le32_to_cpu(pkt.server.port));
 		else if (cb->type == QRTR_TYPE_DEL_CLIENT ||
 			 cb->type == QRTR_TYPE_RESUME_TX)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "RX CTRL: cmd:0x%x addr[0x%x:0x%x]\n",
 				  cb->type, le32_to_cpu(pkt.client.node),
 				  le32_to_cpu(pkt.client.port));
 		else if (cb->type == QRTR_TYPE_HELLO ||
 			 cb->type == QRTR_TYPE_BYE)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "RX CTRL: cmd:0x%x node[0x%x]\n",
 				  cb->type, cb->src_node);
 		else if (cb->type == QRTR_TYPE_DEL_PROC)
-			QRTR_INFO(qrtr_nid_ilc,
+			QRTR_INFO(node->ilc,
 				  "RX CTRL: cmd:0x%x node[0x%x]\n",
 				  cb->type, le32_to_cpu(pkt.proc.node));
 	}
@@ -617,7 +616,7 @@ static int qrtr_tx_wait(struct qrtr_node *node, struct sockaddr_qrtr *to,
 		list_add_tail(&waiter->node, &flow->waiters);
 
 		confirm_rx = -EAGAIN;
-		QRTR_INFO(qrtr_nid_ilc, "new waiter %s[%d] for [0x%x:0x%x]\n",
+		QRTR_INFO(node->ilc, "new waiter %s[%d] for [0x%x:0x%x]\n",
 			  current->comm, current->pid,
 			  to->sq_node, to->sq_port);
 	} else {
@@ -1270,6 +1269,12 @@ static void qrtr_node_rx_work(struct kthread_work *work)
 	struct qrtr_node *node = container_of(work, struct qrtr_node,
 					      read_data);
 	struct sk_buff *skb;
+	char name[32] = {0,};
+
+	if (unlikely(!node->ilc)) {
+		snprintf(name, sizeof(name), "qrtr_%d", node->nid);
+		node->ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT, name, 0);
+	}
 
 	while ((skb = skb_dequeue(&node->rx_queue)) != NULL) {
 		struct qrtr_cb *cb = (struct qrtr_cb *)skb->cb;
@@ -2337,8 +2342,6 @@ static int __init qrtr_proto_init(void)
 
 	qrtr_local_ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT,
 						"qrtr_local", 0);
-	qrtr_nid_ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT,
-						"qrtr_nid", 0);
 
 	rc = proto_register(&qrtr_proto, 1);
 	if (rc)
