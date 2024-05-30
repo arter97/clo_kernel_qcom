@@ -17,7 +17,7 @@ description:
 properties:
   compatible:
     enum:
-      - pci17cb,1107  # WCN7850
+      - qcom,wcn7850-wifi  #pci17cb,1107
 
   reg:
     maxItems: 1
@@ -82,7 +82,7 @@ examples:
             bus-range = <0x01 0xff>;
 
             wifi@0 {
-                compatible = "pci17cb,1107";
+                compatible = "qcom,wcn7850-wifi";
                 reg = <0x10000 0x0 0x0 0x0 0x0>;
 
                 vddaon-supply = <&vreg_pmu_aon_0p59>;

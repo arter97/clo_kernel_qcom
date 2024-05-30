@@ -16,8 +16,8 @@ description: |
 properties:
   compatible:
     enum:
-      - pci17cb,1101  # QCA6390
-      - pci17cb,1103  # WCN6855
+      - qcom,qca6390-wifi  #pci17cb,1101
+      - qcom,wcn6855-wifi  #pci17cb,1103
 
   reg:
     maxItems: 1
@@ -64,7 +64,7 @@ allOf:
       properties:
         compatible:
           contains:
-            const: pci17cb,1101
+            const: qcom,qca6390-wifi
     then:
       required:
         - vddrfacmn-supply
@@ -80,7 +80,7 @@ allOf:
       properties:
         compatible:
           contains:
-            const: pci17cb,1103
+            const: qcom,wcn6855-wifi
     then:
       required:
         - vddrfacmn-supply
@@ -111,7 +111,7 @@ examples:
             bus-range = <0x01 0xff>;
 
             wifi@0 {
-                compatible = "pci17cb,1103";
+                compatible = "qcom,wcn6855-wifi";
                 reg = <0x10000 0x0 0x0 0x0 0x0>;
 
                 qcom,ath11k-calibration-variant = "LE_X13S";
