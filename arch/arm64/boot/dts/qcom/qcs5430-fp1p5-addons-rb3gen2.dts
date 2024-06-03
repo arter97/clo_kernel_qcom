@@ -17,7 +17,3 @@
 &pcie1 {
 	status = "ok";
 };
-
-&pcie1 {
-        status = "ok";
-};
