@@ -12,11 +12,14 @@
 #include <linux/module.h>
 #include <linux/reboot.h>
 #include <linux/pm.h>
+#include <linux/input/qpnp-power-on.h>
+#include <linux/qcom_scm.h>
 
 static void __iomem *msm_ps_hold;
 static int deassert_pshold(struct notifier_block *nb, unsigned long action,
 			   void *data)
 {
+	qcom_scm_deassert_ps_hold();
 	writel(0, msm_ps_hold);
 	mdelay(10000);
 
@@ -30,6 +33,7 @@ static struct notifier_block restart_nb = {
 
 static void do_msm_poweroff(void)
 {
+	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
 	deassert_pshold(&restart_nb, 0, NULL);
 }
 
