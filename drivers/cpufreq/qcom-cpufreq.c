@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* drivers/cpufreq/qcom-cpufreq.c
- *
- * MSM architecture cpufreq driver
- *
- * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2020, 2024, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2007-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Mike A. Chan <mikechan@google.com>
- *
  */
+
+/* MSM architecture cpufreq driver */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -39,6 +37,9 @@ struct cpufreq_suspend_t {
 static DEFINE_PER_CPU(struct cpufreq_suspend_t, suspend_data);
 static DEFINE_PER_CPU(int, cached_resolve_idx);
 static DEFINE_PER_CPU(unsigned int, cached_resolve_freq);
+
+#define CPUHP_QCOM_CPUFREQ_PREPARE      CPUHP_AP_ONLINE_DYN
+#define CPUHP_AP_QCOM_CPUFREQ_STARTING  (CPUHP_AP_ONLINE_DYN + 1)
 
 static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 			unsigned int index)
@@ -358,7 +359,7 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 	if (nf == 0)
 		return ERR_PTR(-EINVAL);
 
-	data = devm_kzalloc(dev, nf * sizeof(*data), GFP_KERNEL);
+	data = kcalloc(nf, sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return ERR_PTR(-ENOMEM);
 
@@ -366,7 +367,7 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 	if (ret)
 		return ERR_PTR(ret);
 
-	ftbl = devm_kzalloc(dev, (nf + 1) * sizeof(*ftbl), GFP_KERNEL);
+	ftbl = kcalloc((nf + 1), sizeof(*ftbl), GFP_KERNEL);
 	if (!ftbl)
 		return ERR_PTR(-ENOMEM);
 
@@ -395,7 +396,7 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 	ftbl[j].driver_data = j;
 	ftbl[j].frequency = CPUFREQ_TABLE_END;
 
-	devm_kfree(dev, data);
+	kfree(data);
 
 	return ftbl;
 }
@@ -466,7 +467,7 @@ static int msm_cpufreq_probe(struct platform_device *pdev)
 			if (!IS_ERR(ftbl)) {
 				dev_warn(dev, "Conflicting tables for CPU%d\n",
 					 cpu);
-				devm_kfree(dev, ftbl);
+				kfree(ftbl);
 			}
 			ftbl = per_cpu(freq_table, cpu - 1);
 		}
@@ -482,8 +483,7 @@ out_register:
 	if (ret)
 		unregister_pm_notifier(&msm_cpufreq_pm_notifier);
 	else
-		dev_err(dev, "Probe successfull!!!\n");
-		
+		dev_err(dev, "Probe successful\n");
 
 	return ret;
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2014, 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "devfreq-icc: " fmt
@@ -152,7 +153,7 @@ static int populate_l3_opp_table(struct device *dev)
 		return -EINVAL;
 	}
 
-	ftbl_base = devm_ioremap(dev, res.start, resource_size(&res));
+	ftbl_base = ioremap(res.start, resource_size(&res));
 	if (!ftbl_base) {
 		dev_err(dev, "Unable to map ftbl-base!\n");
 		return -ENOMEM;
@@ -179,7 +180,7 @@ static int populate_l3_opp_table(struct device *dev)
 		prev_freq = freq;
 	}
 
-	devm_iounmap(dev, ftbl_base);
+	iounmap(ftbl_base);
 	use_cached_l3_freqs = true;
 
 	return 0;
@@ -369,4 +370,4 @@ static __exit void devfreq_icc_exit(void)
 module_exit(devfreq_icc_exit);
 
 MODULE_DESCRIPTION("Device DDR bandwidth voting driver MSM SoCs");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
