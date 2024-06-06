@@ -91,7 +91,7 @@ cpucc_calc_rate(unsigned long rate, u32 m, u32 n, u32 mode, u32 hid_div)
 
 static int cpucc_clk_determine_rate(struct clk_hw *hw, struct clk_rate_request *req)
 {
-	struct clk_hw  *xo_hw, *gpll0_hw;
+	struct clk_hw  *xo_hw, *gpll0_hw, *apcs_parent;
 	struct clk_rate_request parent_req = { };
 	struct clk_regmap_mux_div *cpuclk = to_clk_regmap_mux_div(hw);
 	unsigned long rate = req->rate, rrate;
@@ -133,6 +133,9 @@ static int cpucc_clk_determine_rate(struct clk_hw *hw, struct clk_rate_request *
 		parent_req.best_parent_hw = clk_hw_get_parent_by_index(hw,
 								       P_APCS_CPU_PLL);
 		req->best_parent_hw = parent_req.best_parent_hw;
+		apcs_parent = clk_hw_get_parent(req->best_parent_hw);
+		parent_req.best_parent_rate = clk_hw_get_rate(apcs_parent);
+
 		ret = __clk_determine_rate(req->best_parent_hw, &parent_req);
 		if (ret)
 			return ret;
@@ -273,7 +276,7 @@ static struct pll_vco lucid_5lpe_vco[] = {
 };
 
 static struct pll_vco alpha_pll_vco[] = {
-	{ 700000000, 1400000000, 1 },
+	{ 700000000, 1400000000, 0 },
 };
 
 /* Initial configuration for 1094.4 */
