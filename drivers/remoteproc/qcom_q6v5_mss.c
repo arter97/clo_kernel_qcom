@@ -468,7 +468,8 @@ static int q6v5_reset_assert(struct q6v5 *qproc)
 				   AXI_GATING_VALID_OVERRIDE, 0);
 		ret = reset_control_deassert(qproc->mss_restart);
 	} else {
-		ret = reset_control_assert(qproc->mss_restart);
+		if (qproc->version != MSS_MDM9607)
+			ret = reset_control_assert(qproc->mss_restart);
 	}
 
 	return ret;
