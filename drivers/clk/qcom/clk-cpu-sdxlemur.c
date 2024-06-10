@@ -122,7 +122,7 @@ static int cpucc_clk_determine_rate(struct clk_hw *hw, struct clk_rate_request *
 
 	rrate = cpucc_calc_rate(clk_hw_get_rate(gpll0_hw), 0, 0, 0, div);
 	/* Use the GPLL0 source */
-	if (rrate <= rate) {
+	if (rate <= rrate) {
 		parent_req.best_parent_hw = gpll0_hw;
 		req->best_parent_hw = gpll0_hw;
 		req->best_parent_rate = clk_hw_get_rate(gpll0_hw);
