@@ -719,8 +719,8 @@ static int adsp_start(struct rproc *rproc)
 	if (adsp->dtb_pas_id || adsp->dtb_fw_name) {
 		ret = qcom_scm_pas_auth_and_reset(adsp->dtb_pas_id);
 		if (ret)
-			panic("Panicking, auth and reset failed for remoteproc %s dtb\n",
-				 rproc->name);
+			panic("Panicking, auth and reset failed for remoteproc %s dtb ret=%d\n",
+				rproc->name, ret);
 	}
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_firmware_loading", "enter");
@@ -741,7 +741,8 @@ static int adsp_start(struct rproc *rproc)
 
 	ret = qcom_scm_pas_auth_and_reset(adsp->pas_id);
 	if (ret)
-		panic("Panicking, auth and reset failed for remoteproc %s\n", rproc->name);
+		panic("Panicking, auth and reset failed for remoteproc %s ret=%d\n",
+				rproc->name, ret);
 	trace_rproc_qcom_event(dev_name(adsp->dev), "Q6_auth_reset", "exit");
 
 	/* if needed, signal Q6 to continute booting */
@@ -967,14 +968,21 @@ static int rproc_panic_handler(struct notifier_block *this,
 	struct qcom_adsp *adsp = container_of(this, struct qcom_adsp, panic_blk);
 	int ret;
 
+	if (!adsp)
+		return NOTIFY_DONE;
 	/* wake up SOCCP during panic to run error handlers on SOCCP */
 	dev_info(adsp->dev, "waking SOCCP from panic path\n");
-	ret = rproc_set_state(adsp->rproc, true);
+	ret = qcom_smem_state_update_bits(adsp->wake_state,
+				    SOCCP_STATE_MASK,
+				    BIT(adsp->wake_bit));
+	if (ret) {
+		dev_err(adsp->dev, "failed to update smem bits for D3 to D0\n");
+		goto done;
+	}
+	ret = rproc_config_check(adsp, SOCCP_D0);
 	if (ret)
-		dev_err(adsp->dev, "state did not changed during panic\n");
-	else
-		dev_info(adsp->dev, "subsystem woke-up done from panic path\n");
-
+		dev_err(adsp->dev, "failed to change to D0\n");
+done:
 	return NOTIFY_DONE;
 }
 
@@ -1004,15 +1012,6 @@ static int adsp_stop(struct rproc *rproc)
 	int ret;
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_stop", "enter");
-
-	if (adsp->check_status) {
-		dev_info(adsp->dev, "wakeup: waking subsystem from shutdown path\n");
-		ret = rproc_set_state(rproc, true);
-		if (ret) {
-			dev_err(adsp->dev, "wakeup: state did not changed during shutdown\n");
-			return ret;
-		}
-	}
 
 	ret = qcom_q6v5_request_stop(&adsp->q6v5, adsp->sysmon);
 	if (ret == -ETIMEDOUT)
@@ -1049,13 +1048,6 @@ static int adsp_stop(struct rproc *rproc)
 		ret = mpss_dsm_hyp_assign_control(adsp, false);
 		if (ret)
 			dev_err(adsp->dev, "failed to reclaim mpss dsm mem\n");
-	}
-
-	if (adsp->check_status) {
-		dev_info(adsp->dev, "sleep: subsystem sleep from shutdown path\n");
-		ret = rproc_set_state(rproc, false);
-		if (ret)
-			dev_err(adsp->dev, "sleep: state did not changed during shutdown\n");
 	}
 
 	trace_rproc_qcom_event(dev_name(adsp->dev), "adsp_stop", "exit");
@@ -2619,7 +2611,7 @@ static const struct adsp_data monaco_auto_cdsp_resource = {
 	.sysmon_name = "cdsp",
 	.qmp_name = "cdsp",
 	.ssctl_id = 0x17,
-	.minidump_id = 19,
+	.minidump_id = 7,
 };
 
 static const struct adsp_data niobe_soccp_resource = {
@@ -2629,6 +2621,7 @@ static const struct adsp_data niobe_soccp_resource = {
 	.ssr_name = "soccp",
 	.sysmon_name = "soccp",
 	.check_status = true,
+	.auto_boot = true,
 };
 
 static const struct adsp_data monaco_auto_gpdsp_resource = {
