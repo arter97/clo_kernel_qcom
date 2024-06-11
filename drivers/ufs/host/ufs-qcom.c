@@ -3708,6 +3708,19 @@ cell_put:
 	nvmem_cell_put(nvmem_cell);
 }
 
+static int ufs_qcom_get_host_id(struct ufs_hba *hba)
+{
+	int host_id;
+
+	host_id = of_alias_get_id(hba->dev->of_node, "ufshc");
+	if ((host_id < 0) || (host_id > MAX_UFS_QCOM_HOSTS)) {
+		dev_err(hba->dev, "Failed to get host index %d\n", host_id);
+		host_id = 1;
+	}
+
+	return host_id;
+}
+
 /**
  * ufs_qcom_init - bind phy with controller
  * @hba: host controller instance
@@ -3720,7 +3733,8 @@ cell_put:
  */
 static int ufs_qcom_init(struct ufs_hba *hba)
 {
-	int err;
+	char type[5];
+	int err, host_id;
 	struct device *dev = hba->dev;
 	struct ufs_qcom_host *host;
 	struct ufs_qcom_thermal *ut;
@@ -3793,9 +3807,13 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 					 &host->vdd_hba_reg_nb);
 
 	/* update phy revision information before calling phy_init() */
-
 	ufs_qcom_phy_save_controller_version(host->generic_phy,
 		host->hw_ver.major, host->hw_ver.minor, host->hw_ver.step);
+	if (err == -EPROBE_DEFER) {
+		pr_err("%s: phy device probe is not completed yet\n",
+		__func__);
+		goto out_variant_clear;
+	}
 
 	err = ufs_qcom_parse_reg_info(host, "qcom,vddp-ref-clk",
 				      &host->vddp_ref_clk);
@@ -3886,9 +3904,16 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 
 	ufs_qcom_init_sysfs(hba);
 
+	/*
+	 * Based on host_id, pass the appropriate device type
+	 * to register thermal cooling device.
+	 */
+	host_id = ufs_qcom_get_host_id(hba);
+	snprintf(type, sizeof(type), "ufs%d", host_id);
+
 	ut->tcd = devm_thermal_of_cooling_device_register(dev,
 							  dev->of_node,
-							  "ufs",
+							  type,
 							  dev,
 							  &ufs_thermal_ops);
 	if (IS_ERR(ut->tcd))
@@ -3911,11 +3936,11 @@ static int ufs_qcom_init(struct ufs_hba *hba)
 	/* register minidump */
 	if (msm_minidump_enabled()) {
 		ufs_qcom_register_minidump((uintptr_t)host,
-					sizeof(struct ufs_qcom_host), "UFS_QHOST", 0);
+					sizeof(struct ufs_qcom_host), "UFS_QHOST", host_id);
 		ufs_qcom_register_minidump((uintptr_t)hba,
-					sizeof(struct ufs_hba), "UFS_HBA", 0);
+					sizeof(struct ufs_hba), "UFS_HBA", host_id);
 		ufs_qcom_register_minidump((uintptr_t)hba->host,
-					sizeof(struct Scsi_Host), "UFS_SHOST", 0);
+					sizeof(struct Scsi_Host), "UFS_SHOST", host_id);
 
 		/* Register Panic handler to dump more information in case of kernel panic */
 		host->ufs_qcom_panic_nb.notifier_call = ufs_qcom_panic_handler;
