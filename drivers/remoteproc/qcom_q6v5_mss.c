@@ -443,7 +443,7 @@ static int q6v5_load(struct rproc *rproc, const struct firmware *fw)
 
 static int q6v5_reset_assert(struct q6v5 *qproc)
 {
-	int ret = 0;
+	int ret;
 
 	if (qproc->has_alt_reset) {
 		reset_control_assert(qproc->pdc_reset);
