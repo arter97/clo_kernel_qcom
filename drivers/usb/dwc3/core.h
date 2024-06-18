@@ -1596,6 +1596,7 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc);
 void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
 
 int dwc3_core_soft_reset(struct dwc3 *dwc);
+void dwc3_enable_susphy(struct dwc3 *dwc, bool enable);
 
 struct dwc3 *dwc3_probe(struct platform_device *pdev,
 			struct dwc3_glue_data *glue_data);
