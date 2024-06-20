@@ -200,6 +200,8 @@
  *  29 Mar 2024 : 1. Support for without MDIO and without PHY case
  *                2. Support for TC956x switch to switch connection (upto 2 level) over DSP ports
  *  VERSION     : 04-00
+ *  20 Jun 2024 : 1. Version update
+ *  VERSION     : 04-00-01
  */
 
 #include <linux/clk-provider.h>
@@ -339,7 +341,7 @@ static unsigned int mac1_axi_rd_osr_lmt = 31;
 
 static unsigned int mac0_axi_blen;
 static unsigned int mac1_axi_blen;
-static const struct tc956x_version tc956x_drv_version = {0, 4, 0, 0, 0, 0};
+static const struct tc956x_version tc956x_drv_version = {0, 4, 0, 0, 0, 1};
 int tc956xmac_pm_usage_counter; /* Device Usage Counter */
 int tc956x_dsp_count;
 #ifdef TC956X_SRIOV_PF
