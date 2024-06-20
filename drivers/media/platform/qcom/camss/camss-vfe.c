@@ -271,7 +271,6 @@ const struct camss_formats vfe_formats_rdi_845 = {
 	.formats = formats_rdi_845
 };
 
-/* TODO: Replace with pix formats */
 const struct camss_formats vfe_formats_pix_845 = {
 	.nformats = ARRAY_SIZE(formats_rdi_845),
 	.formats = formats_rdi_845
@@ -336,6 +335,7 @@ static u32 vfe_src_pad_code(struct vfe_line *line, u32 sink_code,
 	case CAMSS_660:
 	case CAMSS_845:
 	case CAMSS_8250:
+	case CAMSS_7280:
 		switch (sink_code) {
 		case MEDIA_BUS_FMT_YUYV8_1X16:
 		{
@@ -411,7 +411,7 @@ int vfe_reset(struct vfe_device *vfe)
 	time = wait_for_completion_timeout(&vfe->reset_complete,
 		msecs_to_jiffies(VFE_RESET_TIMEOUT_MS));
 	if (!time) {
-		dev_err(vfe->camss->dev, "VFE reset timeout\n");
+		dev_err(vfe->camss->dev, "VFE%d reset timeout\n", vfe->id);
 		return -EIO;
 	}
 
@@ -626,6 +626,8 @@ static int vfe_set_clock_rates(struct vfe_device *vfe)
 		if (vfe_match_clock_names(vfe, clock)) {
 			u64 min_rate = 0;
 			long rate;
+			if (!clock->nfreqs || !clock->freq)
+				continue;
 
 			for (j = VFE_LINE_RDI0; j < vfe->res->line_num; j++) {
 				u32 tmp;
@@ -1680,7 +1682,8 @@ int msm_vfe_register_entities(struct vfe_device *vfe,
 
 		video_out->ops = &vfe->video_ops;
 		if (vfe->camss->res->version == CAMSS_845 ||
-		    vfe->camss->res->version == CAMSS_8250)
+		    vfe->camss->res->version == CAMSS_8250 ||
+		    vfe->camss->res->version == CAMSS_7280)
 			video_out->bpl_alignment = 16;
 		else
 			video_out->bpl_alignment = 8;
