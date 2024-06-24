@@ -2426,6 +2426,7 @@
 			interconnects = <&aggre2_noc MASTER_CRYPTO 0 &mc_virt SLAVE_EBI1 0>;
 			interconnect-names = "memory";
 			qcom,icc_bw = <12473>;
+			qce,cmd_desc_support;
 		};
 
 		ipa: ipa@1e40000 {
