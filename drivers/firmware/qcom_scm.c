@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2010,2015,2019,2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 Linaro Ltd.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)     "qcom-scm: %s: " fmt, __func__
 
@@ -202,6 +202,12 @@ static enum qcom_scm_convention __get_convention(void)
 		return qcom_scm_convention;
 
 	/*
+	 * Per the "SMC calling convention specification", the 64-bit calling
+	 * convention can only be used when the client is 64-bit, otherwise
+	 * system will encounter the undefined behaviour.
+	 */
+#if IS_ENABLED(CONFIG_ARM64)
+	/*
 	 * Device isn't required as there is only one argument - no device
 	 * needed to dma_map_single to secure world
 	 */
@@ -221,6 +227,7 @@ static enum qcom_scm_convention __get_convention(void)
 		forced = true;
 		goto found;
 	}
+#endif
 
 	probed_convention = SMC_CONVENTION_ARM_32;
 	ret = __scm_smc_call(NULL, &desc, probed_convention, &res, true);
@@ -422,6 +429,9 @@ int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
 		.owner = ARM_SMCCC_OWNER_SIP,
 	};
 
+	if (!__scm)
+		return -EINVAL;
+
 	if (!cpus || cpumask_empty(cpus))
 		return -EINVAL;
 
@@ -435,7 +445,7 @@ int qcom_scm_set_cold_boot_addr(void *entry, const cpumask_t *cpus)
 	desc.args[0] = flags;
 	desc.args[1] = virt_to_phys(entry);
 
-	return qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+	return qcom_scm_call_atomic(__scm->dev, &desc, NULL);
 }
 EXPORT_SYMBOL(qcom_scm_set_cold_boot_addr);
 
@@ -514,7 +524,12 @@ void qcom_scm_disable_sdi(void)
 		.arginfo = QCOM_SCM_ARGS(2),
 	};
 
-	ret = qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+	if (!__scm) {
+		pr_err("No scm device available\n");
+		return;
+	}
+
+	ret = qcom_scm_call_atomic(__scm->dev, &desc, NULL);
 	if (ret)
 		pr_err("Failed to disable secure wdog debug: %d\n", ret);
 }
@@ -623,8 +638,6 @@ EXPORT_SYMBOL(qcom_scm_config_cpu_errata);
 
 void qcom_scm_phy_update_scm_level_shifter(u32 val)
 {
-	struct device *dev = __scm ? __scm->dev : NULL;
-
 	int ret;
 	struct qcom_scm_desc desc = {
 		.svc = QCOM_SCM_SVC_BOOT,
@@ -632,11 +645,16 @@ void qcom_scm_phy_update_scm_level_shifter(u32 val)
 		.owner = ARM_SMCCC_OWNER_SIP
 	};
 
+	if (!__scm) {
+		pr_err("No scm device available\n");
+		return;
+	}
+
 	desc.args[0] = val;
 	desc.args[1] = 0;
 	desc.arginfo = QCOM_SCM_ARGS(2);
 
-	ret = qcom_scm_call(dev, &desc, NULL);
+	ret = qcom_scm_call(__scm->dev, &desc, NULL);
 	if (ret)
 		pr_err("Failed to update scm level shifter=0x%x\n", ret);
 
@@ -1080,7 +1098,12 @@ void qcom_scm_deassert_ps_hold(void)
 		.arginfo = QCOM_SCM_ARGS(1),
 	};
 
-	ret = qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+	if (!__scm) {
+		pr_err("No scm device available\n");
+		return;
+	}
+
+	ret = qcom_scm_call_atomic(__scm->dev, &desc, NULL);
 	if (ret)
 		pr_err("Failed to deassert_ps_hold=0x%x\n", ret);
 }
@@ -1189,7 +1212,12 @@ void qcom_scm_mmu_sync(bool sync)
 		.arginfo = QCOM_SCM_ARGS(1),
 	};
 
-	ret = qcom_scm_call_atomic(__scm ? __scm->dev : NULL, &desc, NULL);
+	if (!__scm) {
+		pr_err("No scm device available\n");
+		return;
+	}
+
+	ret = qcom_scm_call_atomic(__scm->dev, &desc, NULL);
 
 	if (ret)
 		pr_err("MMU sync with Hypervisor off %x\n", ret);
@@ -1615,6 +1643,10 @@ int qcom_scm_kgsl_init_regs(u32 gpu_req)
 		.args[0] = gpu_req,
 		.arginfo = QCOM_SCM_ARGS(1),
 	};
+
+	if (!__qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_GPU,
+					  QCOM_SCM_SVC_GPU_INIT_REGS))
+		return -EOPNOTSUPP;
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
 }
@@ -2439,6 +2471,51 @@ int qcom_scm_camera_protect_phy_lanes(bool protect, u64 regmask)
 }
 EXPORT_SYMBOL(qcom_scm_camera_protect_phy_lanes);
 
+int qcom_scm_camera_update_camnoc_qos(uint32_t use_case_id,
+	uint32_t cam_qos_cnt, struct qcom_scm_camera_qos *cam_qos)
+{
+	int ret;
+	dma_addr_t payload_phys;
+	u32 *payload_buf = NULL;
+	u32 payload_size = 0;
+
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_CAMERA,
+		.cmd = QCOM_SCM_CAMERA_UPDATE_CAMNOC_QOS,
+		.owner = ARM_SMCCC_OWNER_SIP,
+		.args[0] = use_case_id,
+		.args[2] = payload_size,
+		.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_VAL, QCOM_SCM_RW, QCOM_SCM_VAL),
+	};
+
+	if ((cam_qos_cnt > QCOM_SCM_CAMERA_MAX_QOS_CNT) || (cam_qos_cnt && !cam_qos)) {
+		pr_err("Invalid input SmartQoS count: %d\n", cam_qos_cnt);
+		return -EINVAL;
+	}
+
+	payload_size = cam_qos_cnt * sizeof(struct qcom_scm_camera_qos);
+
+	/* fill all required qos settings */
+	if (use_case_id && payload_size && cam_qos) {
+		payload_buf = dma_alloc_coherent(__scm->dev,
+						 payload_size, &payload_phys, GFP_KERNEL);
+		if (!payload_buf)
+			return -ENOMEM;
+
+		memcpy(payload_buf, cam_qos, payload_size);
+		desc.args[1] = payload_phys;
+		desc.args[2] = payload_size;
+	}
+
+	ret = qcom_scm_call(__scm->dev, &desc, NULL);
+
+	if (payload_buf)
+		dma_free_coherent(__scm->dev, payload_size, payload_buf, payload_phys);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qcom_scm_camera_update_camnoc_qos);
+
 int qcom_scm_tsens_reinit(int *tsens_ret)
 {
 	unsigned int ret;
@@ -2978,6 +3055,13 @@ static int __qcom_multi_smc_init(struct qcom_scm *__scm,
 			return ret;
 		}
 
+		/* Return success if "no-multi-smc-support" property is present */
+		if (of_property_read_bool(__scm->dev->of_node,
+				"qcom,no-multi-smc-support")) {
+			dev_info(__scm->dev, "Multi smc is not supported\n");
+			return 0;
+		}
+
 		/* Detect Multi SMC support present or not */
 		ret = qcom_scm_query_wq_queue_info(__scm);
 		if (!ret)
@@ -3070,6 +3154,7 @@ static int qcom_scm_probe(struct platform_device *pdev)
 
 	clks = (unsigned long)of_device_get_match_data(&pdev->dev);
 
+	scm->dev = &pdev->dev;
 	scm->path = devm_of_icc_get(&pdev->dev, NULL);
 	if (IS_ERR(scm->path))
 		return dev_err_probe(&pdev->dev, PTR_ERR(scm->path),
@@ -3133,7 +3218,6 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, scm);
 
 	__scm = scm;
-	__scm->dev = &pdev->dev;
 
 	__qcom_scm_init();
 	__get_convention();

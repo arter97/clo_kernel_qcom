@@ -275,14 +275,8 @@ struct msm_gpi_error_log {
 };
 
 struct __packed qup_q2spi_cr_header_event {
-	u32 cr_hdr_0 : 8;
-	u32 cr_hdr_1 : 8;
-	u32 cr_hdr_2 : 8;
-	u32 cr_hdr_3 : 8;
-	u32 cr_ed_byte_0 : 8;
-	u32 cr_ed_byte_1 : 8;
-	u32 cr_ed_byte_2 : 8;
-	u32 cr_ed_byte_3 : 8;
+	u8 cr_hdr[4];
+	u8 cr_ed_byte[4];
 	u32 reserved0 : 24;
 	u8 code : 8;
 	u32 byte0_len : 4;
@@ -398,6 +392,17 @@ struct gsi_common {
  * whenever client met some scenario like timeout, error in GPI transfer mode.
  */
 void gpi_dump_for_geni(struct dma_chan *chan);
+
+/**
+ * gpi_update_multi_desc_flag() - update multi descriptor flag and num of msgs for
+ *				   multi descriptor mode handling.
+ * @chan: Base address of dma channel
+ * @is_multi_descriptor: is multi descriptor flag
+ * @num_msgs: number of client messages
+ *
+ * Return:None
+ */
+void gpi_update_multi_desc_flag(struct dma_chan *chan, bool is_multi_descriptor, int num_msgs);
 
 /**
  * gsi_common_tre_process() - Process received TRE's from GSI HW

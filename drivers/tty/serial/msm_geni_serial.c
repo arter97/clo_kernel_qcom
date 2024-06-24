@@ -820,7 +820,8 @@ static void msm_geni_serial_enable_interrupts(struct uart_port *uport)
 		geni_m_irq_en |= (M_IO_DATA_DEASSERT_EN | M_IO_DATA_ASSERT_EN);
 		geni_s_irq_en |= (S_GP_IRQ_1_EN | S_GP_IRQ_2_EN | S_GP_IRQ_3_EN);
 	} else {
-		geni_m_irq_en &= ~(M_IO_DATA_DEASSERT_EN | M_IO_DATA_ASSERT_EN);
+		geni_m_irq_en &= ~(M_IO_DATA_DEASSERT_EN | M_IO_DATA_ASSERT_EN |
+				   M_RX_FIFO_LAST_EN);
 		geni_s_irq_en &= ~(S_GP_IRQ_1_EN | S_GP_IRQ_2_EN | S_GP_IRQ_3_EN);
 	}
 	UART_LOG_DBG(port->ipc_log_irqstatus, uport->dev,
@@ -943,15 +944,15 @@ static bool geni_wait_for_cmd_done(struct uart_port *uport, bool is_irq_masked)
 			}
 		}
 	} else {
-		/* Waiting for 10 milli second for interrupt to be fired */
+		/* Waiting for 25 milli second for interrupt to be fired */
 		if (msm_port->m_cmd)
 			timeout = wait_for_completion_timeout
 					(&msm_port->m_cmd_timeout,
-				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC));
+				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC / 4));
 		else if (msm_port->s_cmd)
 			timeout = wait_for_completion_timeout
 					(&msm_port->s_cmd_timeout,
-				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC));
+				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC / 4));
 	}
 	return timeout ? 0 : 1;
 }
@@ -3402,6 +3403,11 @@ static int msm_geni_serial_handle_dma_rx(struct uart_port *uport, bool drop_rx)
 	 */
 	memset(msm_port->rx_buf, 0, rx_bytes_copied);
 
+	if (msm_port->uart_error == UART_ERROR_RX_PARITY_ERROR ||
+		msm_port->uart_error == UART_ERROR_RX_BREAK_ERROR ||
+		msm_port->uart_error == UART_ERROR_RX_FRAMING_ERR)
+		msm_geni_update_uart_error_code(msm_port, UART_ERROR_DEFAULT);
+
 	geni_capture_stop_time(&msm_port->se, msm_port->ipc_log_kpi, __func__,
 			       msm_port->uart_kpi, start_time, rx_bytes, msm_port->cur_baud);
 	return rx_bytes_copied;
@@ -4317,6 +4323,11 @@ static void msm_geni_serial_termios_cfg(struct uart_port *uport,
 						rx_trans_cfg, rx_parity_cfg);
 	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "BitsChar%d stop bit%d\n",
 				bits_per_char, stop_bit_len);
+
+	/* check if MSM CTS line signal is being ignored */
+	if (tx_trans_cfg & UART_CTS_MASK)
+		UART_LOG_DBG(port->ipc_log_misc, uport->dev,
+			     "Check : MSM CTS line signal is being ignored during Tx\n");
 }
 
 /*
@@ -5656,11 +5667,15 @@ static int msm_geni_serial_sys_suspend(struct device *dev)
 					     __func__, port->uart_kpi);
 	if (port->is_console && !con_enabled) {
 		return 0;
-	} else if (uart_console(uport) || port->pm_auto_suspend_disable) {
+	} else if (uart_console(uport)) {
 		IPC_LOG_MSG(port->console_log, "%s start %d\n", __func__, true);
 		uart_suspend_port((struct uart_driver *)uport->private_data,
 					uport);
 		IPC_LOG_MSG(port->console_log, "%s end %d\n", __func__, true);
+	} else if (port->pm_auto_suspend_disable) {
+		UART_LOG_DBG(port->ipc_log_pwr, dev, "%s start %d\n", __func__, true);
+		uart_suspend_port((struct uart_driver *)uport->private_data, uport);
+		UART_LOG_DBG(port->ipc_log_pwr, dev, "%s end %d\n", __func__, true);
 	} else {
 		struct uart_state *state = uport->state;
 		struct tty_port *tty_port = &state->port;
@@ -5697,6 +5712,14 @@ static int msm_geni_serial_sys_hib_resume(struct device *dev)
 		 * Hence call port setup for console uart.
 		 */
 		msm_geni_serial_port_setup(uport);
+	} else if (port->pm_auto_suspend_disable) {
+		/*
+		 * Peripheral register settings are lost during hibernation
+		 * or deep sleep case so update setup flag such that port
+		 * setup happens again during next session.
+		 */
+		port->port_setup = false;
+		uart_resume_port((struct uart_driver *)uport->private_data, uport);
 	} else {
 		/*
 		 * Peripheral register settings are lost during hibernation.

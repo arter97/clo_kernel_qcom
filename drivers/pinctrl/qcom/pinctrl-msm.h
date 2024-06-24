@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013, Sony Mobile Communications AB.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __PINCTRL_MSM_H__
 #define __PINCTRL_MSM_H__
@@ -100,6 +100,7 @@ struct msm_pingroup {
 	unsigned intr_ack_high:1;
 
 	unsigned intr_target_bit:5;
+	unsigned intr_target_width:5;
 	unsigned intr_wakeup_enable_bit:5;
 	unsigned intr_wakeup_present_bit:5;
 	unsigned intr_target_width:5;
