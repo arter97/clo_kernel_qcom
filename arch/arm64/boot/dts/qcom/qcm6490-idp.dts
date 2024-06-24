@@ -21,7 +21,7 @@
 
 	/* This will be deprecated soon */
 	qcom,msm-id = <497 0x10000>, <498 0x10000>, <475 0x10000>, <515 0x10000>;
-	qcom,board-id = <34 0>, <34 0x1>, <34 0x600>, <34 0x601>;
+	qcom,board-id = <34 0>, <34 0x1>, <34 0x2>, <34 0x600>, <34 0x601>,  <34 0x602>;
 
 	aliases {
 		serial0 = &uart5;
