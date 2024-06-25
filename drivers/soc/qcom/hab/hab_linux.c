@@ -58,7 +58,22 @@ static int hab_open(struct inode *inodep, struct file *filep)
 		return -ENOMEM;
 	}
 
-	ctx->owner = task_pid_nr(current);
+	/*
+	 * w/ the /dev/hab node split feature, when one single process
+	 * using different threads to call habmm_socket_open() w/ different
+	 * MMIDs from different MMID groups, we can know those different
+	 * uhab_context are belonging to the same process.
+	 *
+	 * even if w/o /dev/hab node split feature, there will be a case where
+	 * a child thread is responsible for managing habmm_socket_open/close,
+	 * and other child threads use vcid for communication.
+	 * If ctx->owner is pid, then context_stat will display the pid of the child thread.
+	 * This is not what we want. We hope that context_stat will display the
+	 * thread group id of the process, not the pid of a child thread.
+	 * Because the threa group id often has more information
+	 * for us to analyze and debug.
+	 */
+	ctx->owner = task_tgid_nr(current);
 	ctx->mmid_grp_index = MINOR(inodep->i_rdev);
 
 	filep->private_data = ctx;
@@ -461,7 +476,7 @@ static int __init hab_init(void)
 	pr_debug("init start, ver %X\n", HAB_API_VER);
 
 	/* prepare resources for creating hab char devices */
-	result = alloc_chrdev_region(&dev_no, 0, CDEV_NUM_MAX, "habdev");
+	result = alloc_chrdev_region(&dev_no, 0, CDEV_NUM_MAX, "hab");
 
 	if (result < 0) {
 		pr_err("alloc_chrdev_region failed: %d\n", result);
@@ -478,7 +493,7 @@ static int __init hab_init(void)
 	if (!hab_driver.cdev)
 		goto cdev_alloc_fail;
 
-	hab_driver.class = class_create(THIS_MODULE, "habdev");
+	hab_driver.class = class_create(THIS_MODULE, "hab");
 
 	if (IS_ERR(hab_driver.class)) {
 		result = PTR_ERR(hab_driver.class);

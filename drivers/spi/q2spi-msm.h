@@ -169,12 +169,11 @@
 #define PINCTRL_SLEEP		"sleep"
 #define PINCTRL_SHUTDOWN	"shutdown"
 
-/* Max Minor devices */
-#define MAX_DEV				2
-#define DEVICE_NAME_MAX_LEN		64
+/* Max number of Q2SPI devices */
+#define Q2SPI_MAX_DEV			2
+#define Q2SPI_DEV_NAME_MAX_LEN		64
 
-#define QSPI_NUM_CS			2
-#define QSPI_BYTES_PER_WORD		4
+#define Q2SPI_RESP_BUF_RETRIES		(100)
 
 #define Q2SPI_INFO(q2spi_ptr, x...) do { \
 if (q2spi_ptr) { \
@@ -207,6 +206,8 @@ if (q2spi_ptr) { \
 static unsigned int q2spi_max_speed;
 /* global storage for device Major number */
 static int q2spi_cdev_major;
+/* global variable for system restart case */
+static bool q2spi_sys_restart;
 
 enum abort_code {
 	TERMINATE_CMD = 0,
@@ -375,11 +376,11 @@ enum var_type {
  */
 struct q2spi_chrdev {
 	dev_t q2spi_dev;
-	struct cdev cdev[MAX_DEV];
+	struct cdev cdev[Q2SPI_MAX_DEV];
 	int major;
 	int minor;
 	struct device *dev;
-	char dev_name[DEVICE_NAME_MAX_LEN];
+	char dev_name[Q2SPI_DEV_NAME_MAX_LEN];
 	struct device *class_dev;
 	struct class *q2spi_class;
 };
@@ -439,6 +440,7 @@ struct q2spi_dma_transfer {
  * @kworker: kthread worker to process the q2spi requests
  * @send_messages: work function to process the q2spi requests
  * @gsi_lock: lock to protect gsi operations
+ * @port_lock: lock to protect q2spi open, release and transfer operations
  * @txn_lock: lock to protect transfer id allocation and free
  * @queue_lock: lock to protect HC operations
  * @send_msgs_lock: lock to protect q2spi_send_messages
@@ -522,6 +524,8 @@ struct q2spi_geni {
 	struct kthread_work send_messages;
 	/* lock to protect gsi operations one at a time */
 	struct mutex gsi_lock;
+	/* lock to protect port open, close and transfer operations  */
+	struct mutex port_lock;
 	/* lock to protect transfer id allocation and free */
 	spinlock_t txn_lock;
 	/* lock to protect HC operations one at a time*/
@@ -717,5 +721,6 @@ void q2spi_geni_resources_off(struct q2spi_geni *q2spi);
 int __q2spi_send_messages(struct q2spi_geni *q2spi, void *ptr);
 int q2spi_wakeup_hw_through_gpio(struct q2spi_geni *q2spi);
 int q2spi_process_hrf_flow_after_lra(struct q2spi_geni *q2spi, struct q2spi_packet *q2spi_pkt);
+void q2spi_transfer_soft_reset(struct q2spi_geni *q2spi);
 
 #endif /* _SPI_Q2SPI_MSM_H_ */
