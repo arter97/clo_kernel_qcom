@@ -27,7 +27,7 @@
 
 	audio-etm0 {
 		compatible = "qcom,coresight-remote-etm";
-		device-name = "audio-etm0";
+		device-name = "audio_etm0";
 
 		qcom,inst-id = <5>;
 		atid = <40>;
@@ -2847,7 +2847,6 @@
 			reg = <0x0 0x4002000 0x0 0x1000>,
 			      <0x0 0x16280000 0x0 0x180000>;
 			reg-names = "stm-base", "stm-stimulus-base";
-			device-name = "coresight-stm";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -2865,7 +2864,7 @@
 		tpdm@4003000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4003000 0x0 0x1000>;
-			device-name = "qdss-tpdm0";
+			device-name = "tpdm_qdss_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -2925,7 +2924,7 @@
 		tpdm@400f000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x400f000 0x0 0x1000>;
-			device-name = "qdss-tpdm1";
+			device-name = "tpdm_qdss_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -2946,7 +2945,7 @@
 		cti@4010000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4010000 0x0 0x1000>;
-			device-name = "qdss-cti";
+			device-name = "cti_qdss";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3208,7 +3207,7 @@
 		tpdm@482c000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x482c000 0x0 0x1000>;
-			device-name = "gcc-tpdm";
+			device-name = "tpdm_gcc";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3229,7 +3228,7 @@
 		tpdm@4830000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4830000 0x0 0x1000>;
-			device-name = "video-tpdm";
+			device-name = "tpdm_video";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3285,7 +3284,7 @@
 		tpdm@4841000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4841000 0x0 0x1000>;
-			device-name = "prng-tpdm";
+			device-name = "tpdm_prng";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3306,7 +3305,7 @@
 		tpdm@4844000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4844000 0x0 0x1000>;
-			device-name = "lpass-tpdm";
+			device-name = "tpdm_lpass";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3328,7 +3327,7 @@
 		cti@4845000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4845000 0x0 0x1000>;
-			device-name = "lpass-cti";
+			device-name = "cti_lpass";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3338,7 +3337,7 @@
 		tpdm@4850000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4850000 0x0 0x1000>;
-			device-name = "pimem-tpdm";
+			device-name = "tpdm_pimem";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3361,7 +3360,7 @@
 		tpdm@4860000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4860000 0x0 0x1000>;
-			device-name = "gdsp-tpdm";
+			device-name = "tpdm_gdsp";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3382,7 +3381,7 @@
 		cti@4861000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4861000 0x0 0x1000>;
-			device-name = "gdsp-cti0";
+			device-name = "cti_gdsp_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3392,7 +3391,7 @@
 		cti@4862000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4862000 0x0 0x1000>;
-			device-name = "gdsp-cti1";
+			device-name = "cti_gdsp_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3487,7 +3486,7 @@
 		cti@4901000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4901000 0x0 0x1000>;
-			device-name = "gfx-cti0";
+			device-name = "cti_gfx_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3532,7 +3531,7 @@
 		cti@4961000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4961000 0x0 0x1000>;
-			device-name = "gfx-cti1";
+			device-name = "cti_gfx_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3542,7 +3541,7 @@
 		cti@4962000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4962000 0x0 0x1000>;
-			device-name = "gfx-cti2";
+			device-name = "cti_gfx_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3570,7 +3569,7 @@
 		tpdm@4980000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4980000 0x0 0x1000>;
-			device-name = "turing2-tpdm";
+			device-name = "tpdm_turing_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3591,7 +3590,7 @@
 		cti@4982000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4982000 0x0 0x1000>;
-			device-name = "gdsp0-cti0";
+			device-name = "cti_gdsp0_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3636,7 +3635,7 @@
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x498b000 0x0 0x1000>;
 			reg-names = "cti-base";
-			device-name = "gdsp0-cti1";
+			device-name = "cti_gdsp0_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3645,7 +3644,7 @@
 		tpdm@49a0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x49a0000 0x0 0x1000>;
-			device-name = "turing3-tpdm";
+			device-name = "tpdm_turing_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3666,7 +3665,7 @@
 		cti@49a2000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x49a2000 0x0 0x1000>;
-			device-name = "gdsp1-cti0";
+			device-name = "cti_gdsp1_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3710,7 +3709,7 @@
 		cti@49ab000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x49ab000 0x0 0x1000>;
-			device-name = "gdsp1-cti1";
+			device-name = "cti_gdsp1_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3719,7 +3718,7 @@
 		tpdm@49c0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x49c0000 0x0 0x1000>;
-			device-name = "rdpm-tpdm";
+			device-name = "tpdm_rdpm";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3741,7 +3740,7 @@
 		tpdm@49ca000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x49ca000 0x0 0x1000>;
-			device-name = "sdcc-tpdm";
+			device-name = "tpdm_sdcc";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3763,7 +3762,7 @@
 		tpdm@49d0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x49d0000 0x0 0x1000>;
-			device-name = "qm-tpdm";
+			device-name = "tpdm_qm";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3784,7 +3783,7 @@
 		tpdm@4ac0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4ac0000 0x0 0x1000>;
-			device-name = "dlmm-tpdm";
+			device-name = "tpdm_dlmm";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3805,7 +3804,7 @@
 		tpdm@4ac1000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4ac1000 0x0 0x1000>;
-			device-name = "dlmm-tpdm1";
+			device-name = "tpdm_dlmm_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3826,7 +3825,7 @@
 		cti@4ac2000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4ac2000 0x0 0x1000>;
-			device-name = "dlmm-cti0";
+			device-name = "cti_dlmm_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3836,7 +3835,7 @@
 		cti@4ac3000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4ac3000 0x0 0x1000>;
-			device-name = "dlmm-cti1";
+			device-name = "cti_dlmm_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3939,7 +3938,7 @@
 		tpdm@4ad0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4ad0000 0x0 0x1000>;
-			device-name = "dlct0-tpdm0";
+			device-name = "tpdm_dlct0_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3960,7 +3959,7 @@
 		tpdm@4ad1000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4ad1000 0x0 0x1000>;
-			device-name = "dlct0-tpdm1";
+			device-name = "tpdm_dlct0_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -3982,7 +3981,7 @@
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4ad2000 0x0 0x1000>;
 			reg-names = "cti-base";
-			device-name = "dlct0-cti";
+			device-name = "cti_dlct0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4149,7 +4148,7 @@
 		cti@4b00000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b00000 0x0 0x1000>;
-			device-name = "swao-cti";
+			device-name = "cti_swao";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4332,7 +4331,7 @@
 		tpdm@4b09000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b09000 0x0 0x1000>;
-			device-name = "aoss-tpdm0";
+			device-name = "tpdm_aoss_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4353,7 +4352,7 @@
 		tpdm@4b0a000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b0a000 0x0 0x1000>;
-			device-name = "aoss-tpdm1";
+			device-name = "tpdm_aoss_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4374,7 +4373,7 @@
 		tpdm@4b0b000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b0b000 0x0 0x1000>;
-			device-name = "aoss-tpdm2";
+			device-name = "tpdm_aoss_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4395,7 +4394,7 @@
 		tpdm@4b0c000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b0c000 0x0 0x1000>;
-			device-name = "aoss-tpdm3";
+			device-name = "tpdm_aoss_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4416,7 +4415,7 @@
 		tpdm@4b0d000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b0d000 0x0 0x1000>;
-			device-name = "aoss-tpdm4";
+			device-name = "tpdm_aoss_4";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4451,7 +4450,7 @@
 		cti@4b13000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b13000 0x0 0x1000>;
-			device-name = "aoss-cti";
+			device-name = "cti_aoss";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4460,7 +4459,7 @@
 		cti@4b41000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b41000 0x0 0x1000>;
-			device-name = "lpi-cti1";
+			device-name = "cti_lpi_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4470,7 +4469,7 @@
 		tpdm@4b46000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4b46000 0x0 0x1000>;
-			device-name = "lpi-tpdm";
+			device-name = "tpdm_lpi";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4492,7 +4491,7 @@
 		cti@4b4b000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b4b000 0x0 0x1000>;
-			device-name = "lpi-cti0";
+			device-name = "cti_lpi_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4502,7 +4501,7 @@
 		cti@4b82000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b82000 0x0 0x1000>;
-			device-name = "turing0-cti0";
+			device-name = "cti_turing0_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4542,7 +4541,7 @@
 		cti@4b8b000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4b8b000 0x0 0x1000>;
-			device-name = "turing0-cti1";
+			device-name = "cti_turing0_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4551,7 +4550,7 @@
 		cti@4ba2000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4ba2000 0x0 0x1000>;
-			device-name = "turing1-cti0";
+			device-name = "cti_turing1_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4561,7 +4560,7 @@
 		tpdm@4ba0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4ba0000 0x0 0x1000>;
-			device-name = "turing1-tpdm";
+			device-name = "tpdm_turing1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4616,7 +4615,7 @@
 		cti@4bab000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4bab000 0x0 0x1000>;
-			device-name = "turing1-cti1";
+			device-name = "cti_turing1_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4625,7 +4624,7 @@
 		tpdm@4c10000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c10000 0x0 0x1000>;
-			device-name = "dlct1-tpdm0";
+			device-name = "tpdm_dlct1_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4646,7 +4645,7 @@
 		tpdm@4c11000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c11000 0x0 0x1000>;
-			device-name = "dlct1-tpdm1";
+			device-name = "tpdm_dlct1_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4727,7 +4726,7 @@
 		tpdm@4c40000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c40000 0x0 0x1000>;
-			device-name= "dlhm-tpdm";
+			device-name= "tpdm_dlhm";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4748,7 +4747,7 @@
 		cti@4c41000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4c41000 0x0 0x1000>;
-			device-name = "dlhm-cti0";
+			device-name = "cti_dlhm_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4758,7 +4757,7 @@
 		cti@4c42000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4c42000 0x0 0x1000>;
-			device-name = "dlhm-cti1";
+			device-name = "cti_dlhm_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4853,7 +4852,7 @@
 		tpdm@4c50000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c50000 0x0 0x1000>;
-			device-name = "dlst-tpdm";
+			device-name = "tpdm_dlst";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4874,7 +4873,7 @@
 		cti@4c51000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4c51000 0x0 0x1000>;
-			device-name = "dlst-cti";
+			device-name = "cti_dlst";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4953,7 +4952,7 @@
 		tpdm@4c60000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c60000 0x0 0x1000>;
-			device-name = "mdss1-tpdm";
+			device-name = "tpdm_mdss1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4977,7 +4976,7 @@
 		cti@4c61000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4c61000 0x0 0x1000>;
-			device-name = "mdss1-cti";
+			device-name = "cti_mdss1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4988,7 +4987,7 @@
 		tpdm@4c70000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4c70000 0x0 0x1000>;
-			device-name = "mdss0-tpdm";
+			device-name = "tpdm_mdss0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5012,7 +5011,7 @@
 		cti@4c71000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4c71000 0x0 0x1000>;
-			device-name = "mdss0-cti";
+			device-name = "cti_mdss0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5023,7 +5022,7 @@
 		tpdm@4e00000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4e00000 0x0 0x1000>;
-			device-name = "ddr-tpdm3";
+			device-name = "tpdm_ddr_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5046,7 +5045,7 @@
 		tpdm@4e01000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4e01000 0x0 0x1000>;
-			device-name = "ddr-tpdm4";
+			device-name = "tpdm_ddr_4";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5067,7 +5066,7 @@
 		cti@4e02000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e02000 0x0 0x1000>;
-			device-name = "ddr-cti0";
+			device-name = "cti_ddr_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5186,7 +5185,7 @@
 		cti@4e0c000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e0c000 0x0 0x1000>;
-			device-name = "ddr-cti1";
+			device-name = "cti_ddr_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5213,7 +5212,7 @@
 		tpdm@4e10000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4e10000 0x0 0x1000>;
-			device-name = "ddr-tpdm0";
+			device-name = "tpdm_ddr_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5234,7 +5233,7 @@
 		cti@4e11000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e11000 0x0 0x1000>;
-			device-name = "ddr-cti2";
+			device-name = "cti_ddr_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5278,7 +5277,7 @@
 		tpdm@4e20000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4e20000 0x0 0x1000>;
-			device-name = "ddr-tpdm1";
+			device-name = "tpdm_ddr_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5299,7 +5298,7 @@
 		cti@4e21000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e21000 0x0 0x1000>;
-			device-name = "ddr-cti3";
+			device-name = "cti_ddr_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5343,7 +5342,7 @@
 		cti@4e34000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e34000 0x0 0x1000>;
-			device-name = "ddr-cti4";
+			device-name = "cti_ddr_4";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5370,7 +5369,7 @@
 		tpdm@4e40000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x4e40000 0x0 0x1000>;
-			device-name = "ddr-tpdm2";
+			device-name = "tpdm_ddr_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5391,7 +5390,7 @@
 		cti@4e41000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x4e41000 0x0 0x1000>;
-			device-name = "ddr-cti5";
+			device-name = "cti_ddr_5";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5719,7 +5718,7 @@
 		cti@682b000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x682b000 0x0 0x1000>;
-			device-name = "apss-cti0";
+			device-name = "cti_apss_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5728,7 +5727,7 @@
 		tpdm@6860000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x6860000 0x0 0x1000>;
-			device-name = "apss-tpdm3";
+			device-name = "tpdm_apss_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5749,7 +5748,7 @@
 		tpdm@6861000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x6861000 0x0 0x1000>;
-			device-name = "apss-tpdm4";
+			device-name = "tpdm_apss_4";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5770,7 +5769,7 @@
 		cti@6862000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x6862000 0x0 0x1000>;
-			device-name = "apss-cti1";
+			device-name = "cti_apss_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5843,7 +5842,7 @@
 		tpdm@68a0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x68a0000 0x0 0x1000>;
-			device-name = "apss-tpdm0";
+			device-name = "tpdm_apss_0";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5864,7 +5863,7 @@
 		tpdm@68b0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x68b0000 0x0 0x1000>;
-			device-name = "apss-tpdm1";
+			device-name = "tpdm_apss_1";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5885,7 +5884,7 @@
 		tpdm@68c0000 {
 			compatible = "qcom,coresight-tpdm", "arm,primecell";
 			reg = <0x0 0x68c0000 0x0 0x1000>;
-			device-name = "apss-tpdm2";
+			device-name = "tpdm_apss_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5906,7 +5905,7 @@
 		cti@68e0000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x68e0000 0x0 0x1000>;
-			device-name = "apss-cti2";
+			device-name = "cti_apss_2";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5915,7 +5914,7 @@
 		cti@68f0000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x68f0000 0x0 0x1000>;
-			device-name = "apss-cti3";
+			device-name = "cti_apss_3";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -5924,7 +5923,7 @@
 		cti@6900000 {
 			compatible = "arm,coresight-cti", "arm,primecell";
 			reg = <0x0 0x6900000 0x0 0x1000>;
-			device-name = "apss-cti4";
+			device-name = "cti_apss_4";
 
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -7118,7 +7117,7 @@
 
 	turing0-etm0 {
 		compatible = "qcom,coresight-remote-etm";
-		device-name = "turing0-etm0";
+		device-name = "turing_etm0";
 
 		qcom,inst-id = <13>;
 		atid = <38 39>;
