@@ -103,7 +103,6 @@ struct msm_pingroup {
 	unsigned intr_target_width:5;
 	unsigned intr_wakeup_enable_bit:5;
 	unsigned intr_wakeup_present_bit:5;
-	unsigned intr_target_width:5;
 	unsigned intr_target_kpss_val:5;
 	unsigned intr_raw_status_bit:5;
 	unsigned intr_polarity_bit:5;
