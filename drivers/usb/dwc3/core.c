@@ -1961,6 +1961,9 @@ struct dwc3 *dwc3_probe(struct platform_device *pdev,
 		goto err_free_event_buffers;
 	}
 
+	if (!glue_data)
+		platform_set_drvdata(pdev, dwc);
+
 	dwc3_check_params(dwc);
 	dwc3_debugfs_init(dwc);
 
@@ -1970,7 +1973,7 @@ struct dwc3 *dwc3_probe(struct platform_device *pdev,
 
 	pm_runtime_put(dev);
 
-	dma_set_max_seg_size(dev, UINT_MAX);	
+	dma_set_max_seg_size(dev, UINT_MAX);
 	return dwc;
 
 err_exit_debugfs:
