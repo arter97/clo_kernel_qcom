@@ -17,7 +17,7 @@
 /{
 	firmware {
 		scm {
-			qcom,dload-mode = <&tcsr 0x13000>;
+			qcom,dload-mode = <&tcsr_2 0x13000>;
 		};
 	};
 
@@ -111,11 +111,6 @@
 			alignment = <0x0 0x400000>;
 			size = <0x0 0x2000000>;
 		};
-	};
-
-	tcsr: syscon@1fc0000 {
-		compatible = "syscon";
-		reg = <0x0 0x1fc0000 0x0 0x30000>;
 	};
 };
 
