@@ -98,6 +98,8 @@ properties:
   iommus:
     maxItems: 1
 
+  dma-coherent: true
+
   phys:
     description: phandle of the phy
 
