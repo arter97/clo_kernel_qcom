@@ -3611,6 +3611,7 @@
 			clock-names = "apb_pclk";
 			device-name = "tpdm_modem_0";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -3740,6 +3741,7 @@
 
 			qcom,dsb-element-bits = <32>;
 			device-name = "tpdm_gcc";
+			qcom,dsb-msrs-num = <32>;
 
 			out-ports {
 				port {
@@ -3797,6 +3799,7 @@
 			clock-names = "apb_pclk";
 			device-name = "tpdm_lpass";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -4207,6 +4210,7 @@
 			reg = <0x0 0x6b0d000 0x0 0x1000>;
 
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <32>;
 			device-name = "tpdm_swao_1";
 			clocks = <&aoss_qmp>;
 			clock-names = "apb_pclk";
@@ -4250,6 +4254,7 @@
 
 			device-name = "tpdm_mdss";
 			qcom,cmb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -4269,6 +4274,7 @@
 			clock-names = "apb_pclk";
 			device-name = "tpdm_dl_south";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -4299,6 +4305,7 @@
 
 			device-name = "tpdm_dlct";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -4319,6 +4326,7 @@
 
 			device-name = "tpdm_ipcc";
 			qcom,cmb-element-bits = <64>;
+			qcom,cmb-msrs-num = <1>;
 
 			out-ports {
 				port {
@@ -4440,6 +4448,7 @@
 			clock-names = "apb_pclk";
 			device-name = "tpdm_wpss";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <16>;
 
 			out-ports {
 				port {
@@ -4895,6 +4904,7 @@
 
 			device-name = "tpdm_actpm";
 			qcom,cmb-element-bits = <64>;
+			qcom,cmb-msrs-num = <1>;
 
 			out-ports {
 				port {
@@ -4915,6 +4925,7 @@
 
 			device-name = "tpdm_apss";
 			qcom,dsb-element-bits = <32>;
+			qcom,dsb-msrs-num = <32>;
 
 			out-ports {
 				port {
@@ -4997,6 +5008,7 @@
 
 			device-name = "tpdm_llm_silver";
 			qcom,cmb-element-bits = <32>;
+			qcom,cmb-msrs-num = <12>;
 
 			out-ports {
 				port {
@@ -5017,6 +5029,7 @@
 
 			device-name = "tpdm_llm_gold";
 			qcom,cmb-element-bits = <32>;
+			qcom,cmb-msrs-num = <12>;
 
 			out-ports {
 				port {
