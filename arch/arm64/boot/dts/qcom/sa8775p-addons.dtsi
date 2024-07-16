@@ -7,6 +7,14 @@
 
 / {
 	reserved-memory {
+		audio_cma_mem: qcom,audio-ml {
+			compatible = "shared-dma-pool";
+			alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
+			reusable;
+			alignment = <0x0 0x400000>;
+			size = <0x0 0x1000000>;
+		};
+
 		dump_mem: mem-dump-region {
 			compatible = "shared-dma-pool";
 			alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
@@ -370,6 +378,20 @@
 		qcom,hyplog-enabled;
 		hyplog-address-offset = <0x410>;
 		hyplog-size-offset = <0x414>;
+	};
+
+	lpass_tlmm: pinctrl@3440000 {
+		compatible = "qcom,qcs9100-lpass-lpi-pinctrl";
+		reg = <0x0 0x03440000 0x0 0x20000>,
+		      <0x0 0x034D0000 0x0 0x10000>;
+
+		clocks = <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+			 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		clock-names = "core", "audio";
+
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-ranges = <&lpass_tlmm 0 0 23>;
 	};
 
 	csr: csr@4001000 {
