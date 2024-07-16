@@ -15,6 +15,10 @@
 	qcom,msm-id = <497 0x10000>, <498 0x10000>, <475 0x10000>, <515 0x10000>;
 	qcom,board-id = <32 0x9>, <32 0x609>;
 
+	aliases {
+		hsuart0 = &uart4;
+	};
+
 	wcd9375: audio-codec-0 {
 		compatible = "qcom,wcd9370-codec";
 		pinctrl-names = "default", "sleep";
@@ -277,5 +281,25 @@
 		function = "gpio";
 		drive-strength = <8>;
 		bias-disable;
+	};
+};
+
+&uart4 {
+	status = "okay";
+};
+
+&soc {
+	leds {
+		compatible = "gpio-leds";
+
+		led-0 {
+			label = "blue:user1";
+			function = LED_FUNCTION_INDICATOR;
+			color = <LED_COLOR_ID_BLUE>;
+			gpios = <&pm8350c_gpios 9 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+			panic-indicator;
+			status = "okay";
+		};
 	};
 };
