@@ -160,6 +160,9 @@ struct qcom_smp2p {
 	struct list_head outbound;
 };
 
+#define CREATE_TRACE_POINTS
+#include "trace-smp2p.h"
+
 static void qcom_smp2p_kick(struct qcom_smp2p *smp2p)
 {
 	/* Make sure any updated data is written before the kick */
@@ -191,6 +194,7 @@ static void qcom_smp2p_do_ssr_ack(struct qcom_smp2p *smp2p)
 	struct smp2p_smem_item *out = smp2p->out;
 	u32 val;
 
+	trace_smp2p_ssr_ack(smp2p->dev);
 	smp2p->ssr_ack = !smp2p->ssr_ack;
 
 	val = out->flags & ~BIT(SMP2P_FLAGS_RESTART_ACK_BIT);
@@ -213,6 +217,7 @@ static void qcom_smp2p_negotiate(struct qcom_smp2p *smp2p)
 			smp2p->ssr_ack_enabled = true;
 
 		smp2p->negotiation_done = true;
+		trace_smp2p_negotiate(smp2p->dev, out->features);
 	}
 }
 
@@ -250,6 +255,8 @@ static void qcom_smp2p_notify_in(struct qcom_smp2p *smp2p)
 
 		status = val ^ entry->last_value;
 		entry->last_value = val;
+
+		trace_smp2p_notify_in(entry, status, val);
 
 		/* No changes of this entry? */
 		if (!status)
@@ -403,6 +410,8 @@ static int smp2p_update_bits(void *data, u32 mask, u32 value)
 	val |= value;
 	writel(val, entry->value);
 	spin_unlock_irqrestore(&entry->lock, flags);
+
+	trace_smp2p_update_bits(entry, orig, val);
 
 	if (val != orig)
 		qcom_smp2p_kick(entry->smp2p);
