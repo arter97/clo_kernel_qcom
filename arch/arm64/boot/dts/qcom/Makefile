@@ -82,6 +82,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-sony-xperia-yoshino-maple.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-sony-xperia-yoshino-poplar.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-xiaomi-sagit.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcm6490-addons-idp.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= qcm6490-addons-idp-amoled.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcm6490-idp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcs5430-fp1-addons-rb3gen2.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= qcs5430-fp1-addons-rb3gen2-vision-mezz.dtb
