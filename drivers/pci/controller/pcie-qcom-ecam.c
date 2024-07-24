@@ -570,6 +570,7 @@ static struct platform_driver qcom_pcie_ecam_driver = {
 	},
 };
 module_platform_driver(qcom_pcie_ecam_driver);
+MODULE_SOFTDEP("pre: cnss2");
 
 MODULE_DESCRIPTION("Qualcomm PCIe ECAM root complex driver");
 MODULE_LICENSE("GPL");
