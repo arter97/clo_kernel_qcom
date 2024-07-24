@@ -1,5 +1,7 @@
 la_targets = [
     # keep sorted
+    "anorak",
+    "autoghgvm",
     "autogvm",
     "blair",
     "gen3auto",
@@ -23,7 +25,6 @@ lxc_variants = [
 
 lxc_targets = [
     # keep sorted
-    "autoghgvm",
     "autogvm",
     "gen4auto",
 ]
@@ -43,11 +44,16 @@ vm_types = [
     "oemvm",
 ]
 
-vm_target_bases = [
-    "pineapple",
+niobe_vm_types = [
+    "tuivm",
 ]
 
-vm_targets = ["{}-{}".format(t, vt) for t in vm_target_bases for vt in vm_types]
+vm_target_bases = {
+    "pineapple": vm_types,
+    "niobe": niobe_vm_types,
+}
+
+vm_targets = ["{}-{}".format(t, vt) for t in vm_target_bases.keys() for vt in vm_target_bases[t]]
 
 vm_variants = [
     # keep sorted

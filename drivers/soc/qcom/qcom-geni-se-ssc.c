@@ -208,9 +208,9 @@ static int geni_se_ssr_notify_block(struct notifier_block *n,
 
 	switch (code) {
 	case QCOM_SSR_BEFORE_SHUTDOWN:
-		geni_se_ssc_qup_down(dev);
 		GENI_SE_DBG(dev->log_ctx, false, NULL,
 			    "SSR notification before power down\n");
+		geni_se_ssc_qup_down(dev);
 		break;
 	case QCOM_SSR_AFTER_POWERUP:
 		geni_se_ssc_qup_up(dev);
@@ -265,7 +265,6 @@ static int geni_se_ssc_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 	}
 
-#if IS_ENABLED(CONFIG_IPC_LOGGING)
 	geni_se_ssc_dev->log_ctx = ipc_log_context_create(NUM_LOG_PAGES,
 							  dev_name(geni_se_ssc_dev->dev), 0);
 	if (!geni_se_ssc_dev->log_ctx)
@@ -273,7 +272,6 @@ static int geni_se_ssc_probe(struct platform_device *pdev)
 	else
 		GENI_SE_DBG(geni_se_ssc_dev->log_ctx, false, NULL,
 			    "IPC log created successfully\n");
-#endif
 
 	ret = of_property_read_string(geni_se_ssc_dev->dev->of_node,
 				      "qcom,subsys-name", &geni_se_ssc_dev->ssr.subsys_name);
@@ -316,7 +314,8 @@ static int geni_se_ssc_probe(struct platform_device *pdev)
 err:
 	if (geni_se_ssc_dev->log_ctx)
 		ipc_log_context_destroy(geni_se_ssc_dev->log_ctx);
-	return 0;
+
+	return ret;
 }
 
 static const struct of_device_id geni_se_ssc_dt_match[] = {

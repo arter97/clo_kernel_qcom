@@ -120,10 +120,10 @@ config QCOM_GENI_SE_SSC
 	tristate "QCOM GENI SSC Serial Engine Driver"
 	depends on QCOM_GENI_SE
 	help
-	  This driver is also used to manage SSR aspects of multiple Serial
+	  This driver is used to manage SSR aspects of multiple Serial
 	  Engines present in the QUP.
 
-	  This driver can also be built as a module.  If so, the module
+	  This driver can also be built as a module. If so, the module
 	  will be called qcom-geni-se-ssc.
 
 config QCOM_GSBI

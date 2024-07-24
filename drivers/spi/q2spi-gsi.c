@@ -658,12 +658,13 @@ void q2spi_gsi_ch_ev_cb(struct dma_chan *ch, struct msm_gpi_cb const *cb, void *
 	struct q2spi_geni *q2spi = ptr;
 	int num_crs, i = 0;
 
-	Q2SPI_DEBUG(q2spi, "%s event:%d\n", __func__, cb->cb_event);
+	Q2SPI_DEBUG(q2spi, "%s event:%s\n", __func__, TO_GPI_CB_EVENT_STR(cb->cb_event));
 	switch (cb->cb_event) {
 	case MSM_GPI_QUP_NOTIFY:
 	case MSM_GPI_QUP_MAX_EVENT:
-		Q2SPI_DEBUG(q2spi, "%s:cb_ev%d status%llu ts%llu count%llu\n",
-			    __func__, cb->cb_event, cb->status, cb->timestamp, cb->count);
+		Q2SPI_DEBUG(q2spi, "%s cb_ev %s status %llu ts %llu count %llu\n",
+			    __func__, TO_GPI_CB_EVENT_STR(cb->cb_event), cb->status,
+			    cb->timestamp, cb->count);
 		break;
 	case MSM_GPI_QUP_ERROR:
 	case MSM_GPI_QUP_CH_ERROR:
@@ -685,26 +686,17 @@ void q2spi_gsi_ch_ev_cb(struct dma_chan *ch, struct msm_gpi_cb const *cb, void *
 		q2spi_cr_hdr_event = &cb->q2spi_cr_header_event;
 		num_crs = q2spi_cr_hdr_event->byte0_len;
 		for (i = 0; i < num_crs; i++) {
-			if (i == 0) {
-				if (q2spi_cr_hdr_event->cr_hdr_0 == CR_ADDR_LESS_RD)
-					atomic_inc(&q2spi->doorbell_pending);
-				if (q2spi_cr_hdr_event->cr_hdr_0 == CR_BULK_ACCESS_STATUS)
-					atomic_dec(&q2spi->doorbell_pending);
-			} else if (i == 1) {
-				if (q2spi_cr_hdr_event->cr_hdr_1 == CR_ADDR_LESS_RD)
-					atomic_inc(&q2spi->doorbell_pending);
-				if (q2spi_cr_hdr_event->cr_hdr_1 == CR_BULK_ACCESS_STATUS)
-					atomic_dec(&q2spi->doorbell_pending);
-			} else if (i == 2) {
-				if (q2spi_cr_hdr_event->cr_hdr_2 == CR_ADDR_LESS_RD)
-					atomic_inc(&q2spi->doorbell_pending);
-				if (q2spi_cr_hdr_event->cr_hdr_2 == CR_BULK_ACCESS_STATUS)
-					atomic_dec(&q2spi->doorbell_pending);
-			} else if (i == 3) {
-				if (q2spi_cr_hdr_event->cr_hdr_3 == CR_ADDR_LESS_RD)
-					atomic_inc(&q2spi->doorbell_pending);
-				if (q2spi_cr_hdr_event->cr_hdr_3 == CR_BULK_ACCESS_STATUS)
-					atomic_dec(&q2spi->doorbell_pending);
+			if (q2spi_cr_hdr_event->cr_hdr[i] == CR_ADDR_LESS_RD) {
+				reinit_completion(&q2spi->sma_rd_comp);
+				atomic_inc(&q2spi->doorbell_pending);
+				if (!atomic_read(&q2spi->sma_wr_pending))
+					atomic_set(&q2spi->sma_rd_pending, 1);
+			}
+			if (q2spi_cr_hdr_event->cr_hdr[i] == CR_BULK_ACCESS_STATUS)
+				atomic_dec(&q2spi->doorbell_pending);
+			if (q2spi_cr_hdr_event->cr_hdr[i] == CR_ADDR_LESS_WR) {
+				if (!atomic_read(&q2spi->sma_rd_pending))
+					atomic_set(&q2spi->sma_wr_pending, 1);
 			}
 		}
 		Q2SPI_DEBUG(q2spi, "%s GSI doorbell event, db_pending:%d\n",

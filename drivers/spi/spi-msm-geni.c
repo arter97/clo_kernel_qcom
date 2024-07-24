@@ -173,7 +173,7 @@ struct spi_geni_gsi {
 };
 
 struct spi_geni_ssr {
-	struct mutex ssr_lock;
+	struct mutex ssr_lock; /* SSR execution process */
 	bool is_ssr_down;
 	bool xfer_prepared;
 };
@@ -275,6 +275,22 @@ void geni_spi_se_dump_dbg_regs(struct geni_se *se, void __iomem *base,
 	u32 geni_s_irq_en = 0;
 	u32 geni_dma_tx_irq_en = 0;
 	u32 geni_dma_rx_irq_en = 0;
+	u32 geni_general_cfg = 0;
+	u32 geni_output_ctrl = 0;
+	u32 geni_clk_ctrl_ro = 0;
+	u32 fifo_if_disable_ro = 0;
+	u32 geni_fw_multilock_msa_ro = 0;
+	u32 geni_clk_sel = 0;
+	u32 m_irq_en = 0;
+	u32 se_dma_tx_attr = 0;
+	u32 se_dma_tx_irq_stat = 0;
+	u32 se_dma_rx_attr = 0;
+	u32 se_dma_rx_irq_stat = 0;
+	u32 se_gsi_event_en = 0;
+	u32 se_irq_en = 0;
+	u32 dma_if_en_ro = 0;
+	u32 dma_general_cfg = 0;
+	u32 dma_debug_reg0 = 0;
 
 	m_cmd0 = geni_read_reg(base, SE_GENI_M_CMD0);
 	m_irq_status = geni_read_reg(base, SE_GENI_M_IRQ_STATUS);
@@ -296,23 +312,53 @@ void geni_spi_se_dump_dbg_regs(struct geni_se *se, void __iomem *base,
 	geni_s_irq_en = geni_read_reg(base, SE_GENI_S_IRQ_EN);
 	geni_dma_tx_irq_en = geni_read_reg(base, SE_DMA_TX_IRQ_EN);
 	geni_dma_rx_irq_en = geni_read_reg(base, SE_DMA_RX_IRQ_EN);
+	geni_general_cfg = geni_read_reg(base, GENI_GENERAL_CFG);
+	geni_output_ctrl = geni_read_reg(base, GENI_OUTPUT_CTRL);
+	geni_clk_ctrl_ro = geni_read_reg(base, GENI_CLK_CTRL_RO);
+	fifo_if_disable_ro = geni_read_reg(base, GENI_IF_DISABLE_RO);
+	geni_fw_multilock_msa_ro = geni_read_reg(base, GENI_FW_MULTILOCK_MSA_RO);
+	geni_clk_sel = geni_read_reg(base, SE_GENI_CLK_SEL);
+	m_irq_en = geni_read_reg(base, SE_GENI_M_IRQ_EN);
+	se_dma_tx_attr = geni_read_reg(base, SE_DMA_TX_ATTR);
+	se_dma_tx_irq_stat = geni_read_reg(base, SE_DMA_TX_IRQ_STAT);
+	se_dma_rx_attr = geni_read_reg(base, SE_DMA_RX_ATTR);
+	se_dma_rx_irq_stat = geni_read_reg(base, SE_DMA_RX_IRQ_STAT);
+	se_gsi_event_en = geni_read_reg(base, SE_GSI_EVENT_EN);
+	se_irq_en = geni_read_reg(base, SE_IRQ_EN);
+	dma_if_en_ro = geni_read_reg(base, DMA_IF_EN_RO);
+	dma_general_cfg = geni_read_reg(base, DMA_GENERAL_CFG);
+	dma_debug_reg0 = geni_read_reg(base, SE_DMA_DEBUG_REG0);
 
 	SPI_LOG_DBG(ipc, false, se->dev,
-	"%s: m_cmd0:0x%x, m_irq_status:0x%x, geni_status:0x%x, geni_ios:0x%x\n",
-	__func__, m_cmd0, m_irq_status, geni_status, geni_ios);
+		    "%s: m_cmd0:0x%x, m_irq_status:0x%x, geni_status:0x%x, geni_ios:0x%x\n",
+		    __func__, m_cmd0, m_irq_status, geni_status, geni_ios);
 	SPI_LOG_DBG(ipc, false, se->dev,
-	"dma_rx_irq:0x%x, dma_tx_irq:0x%x, rx_fifo_sts:0x%x, tx_fifo_sts:0x%x\n",
-	dma_rx_irq, dma_tx_irq, rx_fifo_status, tx_fifo_status);
+		    "dma_rx_irq:0x%x, dma_tx_irq:0x%x, rx_fifo_sts:0x%x, tx_fifo_sts:0x%x\n",
+		    dma_rx_irq, dma_tx_irq, rx_fifo_status, tx_fifo_status);
 	SPI_LOG_DBG(ipc, false, se->dev,
-	"se_dma_dbg:0x%x, m_cmd_ctrl:0x%x, dma_rxlen:0x%x, dma_rxlen_in:0x%x\n",
-	se_dma_dbg, m_cmd_ctrl, se_dma_rx_len, se_dma_rx_len_in);
+		    "se_dma_dbg:0x%x, m_cmd_ctrl:0x%x, dma_rxlen:0x%x, dma_rxlen_in:0x%x\n",
+		    se_dma_dbg, m_cmd_ctrl, se_dma_rx_len, se_dma_rx_len_in);
 	SPI_LOG_DBG(ipc, false, se->dev,
-	"dma_txlen:0x%x, dma_txlen_in:0x%x s_irq_status:0x%x\n",
-	se_dma_tx_len, se_dma_tx_len_in, s_irq_status);
+		    "dma_txlen:0x%x, dma_txlen_in:0x%x s_irq_status:0x%x\n",
+		    se_dma_tx_len, se_dma_tx_len_in, s_irq_status);
 	SPI_LOG_DBG(ipc, false, se->dev,
-	"dma_txirq_en:0x%x, dma_rxirq_en:0x%x geni_m_irq_en:0x%x geni_s_irq_en:0x%x\n",
-	geni_dma_tx_irq_en, geni_dma_rx_irq_en, geni_m_irq_en,
-	geni_s_irq_en);
+		    "dma_txirq_en:0x%x, dma_rxirq_en:0x%x geni_m_irq_en:0x%x geni_s_irq_en:0x%x\n",
+		    geni_dma_tx_irq_en, geni_dma_rx_irq_en, geni_m_irq_en, geni_s_irq_en);
+	SPI_LOG_DBG(ipc, false, se->dev,
+		    "geni_dma_tx_irq_en:0x%x, geni_dma_rx_irq_en:0x%x, geni_general_cfg:0x%x\n",
+		    geni_dma_tx_irq_en, geni_dma_rx_irq_en, geni_general_cfg);
+	SPI_LOG_DBG(ipc, false, se->dev,
+		    "geni_clk_ctrl_ro:0x%x, fifo_if_disable_ro:0x%x, geni_fw_multilock_msa_ro:0x%x\n",
+		    geni_clk_ctrl_ro, fifo_if_disable_ro, geni_fw_multilock_msa_ro);
+	SPI_LOG_DBG(ipc, false, se->dev,
+		    "m_irq_en:0x%x, se_dma_tx_attr:0x%x se_dma_tx_irq_stat:0x%x, geni_output_ctrl:0x%x\n",
+		     m_irq_en, se_dma_tx_attr, se_dma_tx_irq_stat, geni_output_ctrl);
+	SPI_LOG_DBG(ipc, false, se->dev,
+		    "se_dma_rx_attr:0x%x, se_dma_rx_irq_stat:0x%x se_gsi_event_en:0x%x se_irq_en:0x%x\n",
+		    se_dma_rx_attr, se_dma_rx_irq_stat, se_gsi_event_en, se_irq_en);
+	SPI_LOG_DBG(ipc, false, se->dev,
+		    "dma_if_en_ro:0x%x, dma_general_cfg:0x%x dma_debug_reg0:0x%x\n, geni_clk_sel:0x%x",
+		    dma_if_en_ro, dma_general_cfg, dma_debug_reg0, geni_clk_sel);
 }
 
 static void spi_slv_setup(struct spi_geni_master *mas);
@@ -1205,7 +1251,7 @@ static int spi_geni_map_buf(struct spi_geni_master *mas,
 						xfer->len, DMA_FROM_DEVICE);
 			if (ret) {
 				SPI_LOG_ERR(mas->ipc, true, mas->dev,
-				"%s: Mapping Rx buffer %d\n", __func__, ret);
+					    "%s: Mapping Rx buffer %d\n", __func__, ret);
 				return ret;
 			}
 		}
@@ -1217,7 +1263,7 @@ static int spi_geni_map_buf(struct spi_geni_master *mas,
 						xfer->len, DMA_TO_DEVICE);
 			if (ret) {
 				SPI_LOG_ERR(mas->ipc, true, mas->dev,
-				"%s: Mapping Tx buffer %d\n", __func__, ret);
+					    "%s: Mapping Tx buffer %d\n", __func__, ret);
 				return ret;
 			}
 		}
@@ -1256,7 +1302,7 @@ static int spi_geni_prepare_message(struct spi_master *spi,
 	if (mas->spi_ssr.is_ssr_down || !mas->spi_ssr.xfer_prepared) {
 		mutex_unlock(&mas->spi_ssr.ssr_lock);
 		SPI_LOG_DBG(mas->ipc, false, mas->dev,
-			    "%s: bail out during SSR \n", __func__);
+			    "%s: bail out during SSR\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1375,8 +1421,8 @@ static int spi_geni_unprepare_message(struct spi_master *spi_mas,
 			pm_runtime_put_sync(mas->dev);
 			count = atomic_read(&mas->dev->power.usage_count);
 			if (count < 0)
-				SPI_LOG_ERR(mas->ipc, false, mas->dev,
-					"suspend usage count mismatch:%d",
+				SPI_LOG_DBG(mas->ipc, false, mas->dev,
+					    "suspend usage count mismatch:%d",
 								count);
 		} else if (!pm_runtime_status_suspended(mas->dev) &&
 				pm_runtime_enabled(mas->dev)) {
@@ -1451,9 +1497,9 @@ static int spi_geni_mas_setup(struct spi_master *spi)
 {
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
 	int proto = geni_se_read_proto(&mas->spi_rsc);
-	unsigned int major;
-	unsigned int minor;
-	int hw_ver;
+	unsigned int major = 0;
+	unsigned int minor = 0;
+	int hw_ver = 0;
 	int ret = 0;
 
 	if (spi->slave) {
@@ -1578,10 +1624,10 @@ setup_ipc:
 
 	if (!mas->is_deep_sleep) {
 		hw_ver = geni_se_get_qup_hw_version(&mas->spi_rsc);
-		if (hw_ver)
+		if (!hw_ver) {
 			dev_err(mas->dev, "%s:Err getting HW version %d\n",
 							__func__, hw_ver);
-		else {
+		} else {
 			major = GENI_SE_VERSION_MAJOR(hw_ver);
 			minor = GENI_SE_VERSION_MINOR(hw_ver);
 
@@ -1622,7 +1668,7 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 		mas->spi_ssr.xfer_prepared = false;
 		mutex_unlock(&mas->spi_ssr.ssr_lock);
 		SPI_LOG_DBG(mas->ipc, false, mas->dev,
-			    "%s: bail out during SSR \n", __func__);
+			    "%s: bail out during SSR\n", __func__);
 		return 0;
 	}
 	/*
@@ -1655,8 +1701,8 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 		}
 
 		if (ret)
-			SPI_LOG_ERR(mas->ipc, false, mas->dev,
-			"%s: Error %d pinctrl_select_state\n", __func__, ret);
+			SPI_LOG_DBG(mas->ipc, false, mas->dev,
+				    "%s: Error %d pinctrl_select_state\n", __func__, ret);
 	}
 
 	if (!mas->setup || !mas->shared_ee) {
@@ -1688,8 +1734,8 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 		if (mas->dis_autosuspend) {
 			count = atomic_read(&mas->dev->power.usage_count);
 			if (count <= 0)
-				SPI_LOG_ERR(mas->ipc, false, mas->dev,
-				"resume usage count mismatch:%d", count);
+				SPI_LOG_DBG(mas->ipc, false, mas->dev,
+					    "resume usage count mismatch:%d", count);
 		}
 	}
 exit_prepare_transfer_hardware:
@@ -1714,7 +1760,7 @@ static int spi_geni_unprepare_transfer_hardware(struct spi_master *spi)
 		pm_runtime_put_noidle(mas->dev);
 		mutex_unlock(&mas->spi_ssr.ssr_lock);
 		SPI_LOG_DBG(mas->ipc, false, mas->dev,
-			    "%s: bail out during SSR \n", __func__);
+			    "%s: bail out during SSR\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1734,16 +1780,16 @@ static int spi_geni_unprepare_transfer_hardware(struct spi_master *spi)
 		}
 
 		if (ret)
-			SPI_LOG_ERR(mas->ipc, false, mas->dev,
-			"%s: Error %d pinctrl_select_state\n", __func__, ret);
+			SPI_LOG_DBG(mas->ipc, false, mas->dev,
+				    "%s: Error %d pinctrl_select_state\n", __func__, ret);
 	}
 
 	if (mas->dis_autosuspend) {
 		pm_runtime_put_sync(mas->dev);
 		count = atomic_read(&mas->dev->power.usage_count);
 		if (count < 0)
-			SPI_LOG_ERR(mas->ipc, false, mas->dev,
-				"suspend usage count mismatch:%d", count);
+			SPI_LOG_DBG(mas->ipc, false, mas->dev,
+				    "suspend usage count mismatch:%d", count);
 	} else if (!pm_runtime_status_suspended(mas->dev) &&
 			pm_runtime_enabled(mas->dev)) {
 		pm_runtime_mark_last_busy(mas->dev);
@@ -1840,9 +1886,8 @@ static int setup_fifo_xfer(struct spi_transfer *xfer,
 	 * mode for transfers or select the mode dynamically based on
 	 * size of data.
 	 */
-	if (spi->slave)
-		mas->cur_xfer_mode = GENI_SE_DMA;
-	if (mas->disable_dma || trans_len <= fifo_size)
+	mas->cur_xfer_mode = GENI_SE_DMA;
+	if (!spi->slave && (mas->disable_dma || trans_len <= fifo_size))
 		mas->cur_xfer_mode = GENI_SE_FIFO;
 	geni_se_select_mode(&mas->spi_rsc, mas->cur_xfer_mode);
 
@@ -1960,13 +2005,62 @@ dma_unprep:
 
 }
 
+/**
+ * spi_geni_check_gsi_transfer_completion: Wait for completion of data transfer for GSI mode.
+ *
+ * @mas: structure to spi geni master.
+ * xfer_timeout: transfer timeout value.
+ *
+ * Return: 0 on success, error code on failure.
+ */
+static int spi_geni_check_gsi_transfer_completion(struct spi_geni_master *mas,
+						  unsigned long xfer_timeout)
+{
+	int i, ret = 0;
+	unsigned long timeout;
+	bool error = false;
+
+	for (i = 0; i < mas->num_tx_eot; i++) {
+		timeout = wait_for_completion_timeout(&mas->tx_cb, xfer_timeout);
+		if (!timeout) {
+			SPI_LOG_ERR(mas->ipc, true, mas->dev,
+				    "Tx[%d] timeout%lu\n", i, timeout);
+			ret = -ETIMEDOUT;
+			error = true;
+			break;
+		}
+	}
+
+	for (i = 0; i < mas->num_rx_eot; i++) {
+		timeout = wait_for_completion_timeout(&mas->rx_cb, xfer_timeout);
+		if (!timeout) {
+			SPI_LOG_ERR(mas->ipc, true, mas->dev,
+				    "Rx[%d] timeout%lu\n", i, timeout);
+			ret = -ETIMEDOUT;
+			error = true;
+			break;
+		}
+	}
+
+	if (error)
+		return ret;
+
+	if (mas->qn_err) {
+		ret = -EIO;
+		mas->qn_err = false;
+	}
+
+	return ret;
+}
+
 static int spi_geni_transfer_one(struct spi_master *spi,
 				struct spi_device *slv,
 				struct spi_transfer *xfer)
 {
 	int ret = 0;
+	unsigned int xfer_timeout;
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
-	unsigned long timeout, xfer_timeout;
+	unsigned long timeout, xfer_timeout_jiffies;
 	unsigned long long start_time;
 
 	start_time = geni_capture_start_time(&mas->spi_rsc, mas->ipc_log_kpi, __func__,
@@ -1986,7 +2080,7 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 	if (mas->spi_ssr.is_ssr_down || !mas->spi_ssr.xfer_prepared) {
 		mutex_unlock(&mas->spi_ssr.ssr_lock);
 		SPI_LOG_DBG(mas->ipc, false, mas->dev,
-			    "%s: bail out during SSR \n", __func__);
+			    "%s: bail out during SSR\n", __func__);
 		return -EINVAL;
 	}
 
@@ -2013,9 +2107,9 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 			xfer_timeout += SPI_XFER_TIMEOUT_OFFSET;
 	}
 
-	SPI_LOG_ERR(mas->ipc, false, mas->dev,
+	SPI_LOG_DBG(mas->ipc, false, mas->dev,
 		    "current xfer_timeout:%lu ms.\n", xfer_timeout);
-	xfer_timeout = msecs_to_jiffies(xfer_timeout);
+	xfer_timeout_jiffies = msecs_to_jiffies(xfer_timeout);
 
 	if (mas->cur_xfer_mode != GENI_GPI_DMA) {
 		reinit_completion(&mas->xfer_done);
@@ -2030,7 +2124,7 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 		if (spi->slave)
 			mas->slave_state = true;
 		mutex_unlock(&mas->spi_ssr.ssr_lock);
-		timeout = wait_for_completion_timeout(&mas->xfer_done, xfer_timeout);
+		timeout = wait_for_completion_timeout(&mas->xfer_done, xfer_timeout_jiffies);
 		mutex_lock(&mas->spi_ssr.ssr_lock);
 		if (mas->spi_ssr.is_ssr_down)
 			goto err_ssr_transfer_one;
@@ -2076,47 +2170,10 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 			mas->cur_xfer = NULL;
 			goto err_gsi_geni_transfer_one;
 		}
-		if ((mas->num_xfers >= NUM_SPI_XFER) ||
-			(list_is_last(&xfer->transfer_list,
-					&spi->cur_msg->transfers))) {
-			int i;
 
-			for (i = 0 ; i < mas->num_tx_eot; i++) {
-				mutex_unlock(&mas->spi_ssr.ssr_lock);
-				timeout =
-				wait_for_completion_timeout(
-					&mas->tx_cb, xfer_timeout);
-				mutex_lock(&mas->spi_ssr.ssr_lock);
-				if (mas->spi_ssr.is_ssr_down)
-					goto err_ssr_transfer_one;
-				if (timeout <= 0) {
-					SPI_LOG_ERR(mas->ipc, true, mas->dev,
-					"Tx[%d] timeout%lu\n", i, timeout);
-					ret = -ETIMEDOUT;
-					goto err_gsi_geni_transfer_one;
-				}
-			}
-			for (i = 0 ; i < mas->num_rx_eot; i++) {
-				mutex_unlock(&mas->spi_ssr.ssr_lock);
-				timeout =
-				wait_for_completion_timeout(
-					&mas->rx_cb, xfer_timeout);
-				mutex_lock(&mas->spi_ssr.ssr_lock);
-				if (mas->spi_ssr.is_ssr_down)
-					goto err_ssr_transfer_one;
-				if (timeout <= 0) {
-					SPI_LOG_ERR(mas->ipc, true, mas->dev,
-					 "Rx[%d] timeout%lu\n", i, timeout);
-					ret = -ETIMEDOUT;
-					goto err_gsi_geni_transfer_one;
-				}
-			}
-			if (mas->qn_err) {
-				ret = -EIO;
-				mas->qn_err = false;
-				goto err_gsi_geni_transfer_one;
-			}
-		}
+		ret = spi_geni_check_gsi_transfer_completion(mas, xfer_timeout);
+		if (ret)
+			goto err_gsi_geni_transfer_one;
 	}
 
 	mutex_unlock(&mas->spi_ssr.ssr_lock);
@@ -3001,7 +3058,18 @@ static int spi_geni_suspend(struct device *dev)
 		SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
 			    "%s System suspend not allowed while xfer in progress=%d\n",
 			    __func__, ret);
-		return ret;
+		return -EBUSY;
+	}
+
+	if (geni_mas->is_le_vm || geni_mas->is_la_vm) {
+		if (!pm_runtime_status_suspended(dev)) {
+			SPI_LOG_ERR(geni_mas->ipc, true, geni_mas->dev,
+				    ":%s: Client managed runtime PM is active\n", __func__);
+			return -EBUSY;
+		}
+		SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
+			    "%s: System suspend bypassed due to le/la vm\n", __func__);
+		return 0;
 	}
 
 	spi_geni_deep_sleep_enable_check(geni_mas);
@@ -3023,6 +3091,7 @@ static int spi_geni_suspend(struct device *dev)
 			ret = -EBUSY;
 		}
 	}
+
 	geni_se_ssc_clk_enable(&geni_mas->rsc, false);
 	geni_capture_stop_time(&geni_mas->spi_rsc, geni_mas->ipc_log_kpi, __func__,
 			       geni_mas->spi_kpi, start_time, 0, 0);
