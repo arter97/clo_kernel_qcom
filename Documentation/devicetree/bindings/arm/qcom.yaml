@@ -50,6 +50,7 @@ description: |
         msm8998
         qcs404
         qcs8550
+        qcs9100
         qcm2290
         qcm6490
         qcm8550
@@ -928,6 +929,7 @@ properties:
           - enum:
               - qcom,sa8775p-ride
           - const: qcom,sa8775p
+          - const: qcom,qcs9100
 
       - items:
           - enum:
