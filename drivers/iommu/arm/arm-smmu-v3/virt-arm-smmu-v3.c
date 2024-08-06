@@ -824,7 +824,7 @@ static int __init virt_arm_smmu_init(void)
 {
 	return platform_driver_register(&virt_arm_smmu_driver);
 }
-arch_initcall(virt_arm_smmu_init);
+module_init(virt_arm_smmu_init);
 
 static void __exit virt_arm_smmu_exit(void)
 {
