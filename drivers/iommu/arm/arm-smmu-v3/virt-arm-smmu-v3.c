@@ -77,6 +77,8 @@
 
 #define STRTAB_STE_1_S1STALLD		(1UL << 27)
 
+#define STRAB_STE_1_MEM			GENMASK_ULL(35, 32)
+#define STRAB_STE_1_MTCFG		GENMASK_ULL(37, 36)
 #define STRTAB_STE_1_EATS		GENMASK_ULL(29, 28)
 #define STRTAB_STE_1_EATS_ABT		0UL
 #define STRTAB_STE_1_EATS_TRANS		1UL
@@ -249,11 +251,9 @@ static int virt_arm_smmu_domain_finalise_s1(struct virt_arm_smmu_domain *smmu_do
 	struct virt_arm_smmu_device *smmu = smmu_domain->smmu;
 	struct arm_smmu_s1_cfg *cfg = &smmu_domain->s1_cfg;
 	typeof(&pgtbl_cfg->arm_lpae_s1_cfg.tcr) tcr = &pgtbl_cfg->arm_lpae_s1_cfg.tcr;
-
 	asid = arm_smmu_bitmap_alloc(smmu->asid_map, smmu->asid_bits);
 	if (asid < 0)
 		return asid;
-
 	cfg->cdptr = dmam_alloc_coherent(smmu->dev, CTXDESC_CD_DWORDS << 3,
 					 &cfg->cdptr_dma,
 					 GFP_KERNEL | __GFP_ZERO);
@@ -262,7 +262,6 @@ static int virt_arm_smmu_domain_finalise_s1(struct virt_arm_smmu_domain *smmu_do
 		ret = -ENOMEM;
 		goto out_free_asid;
 	}
-
 	cfg->cd.asid	= (u16)asid;
 	cfg->cd.ttbr	= pgtbl_cfg->arm_lpae_s1_cfg.ttbr;
 	cfg->cd.tcr	= FIELD_PREP(CTXDESC_CD_0_TCR_T0SZ, tcr->tsz) |
@@ -280,8 +279,7 @@ out_free_asid:
 	return ret;
 }
 
-static void virt_arm_smmu_write_ctx_desc(struct virt_arm_smmu_device *smmu,
-				    struct arm_smmu_s1_cfg *cfg)
+static void virt_arm_smmu_write_ctx_desc(struct arm_smmu_s1_cfg *cfg)
 {
 	u64 val;
 
@@ -292,7 +290,6 @@ static void virt_arm_smmu_write_ctx_desc(struct virt_arm_smmu_device *smmu,
 	      CTXDESC_CD_0_R | CTXDESC_CD_0_A | CTXDESC_CD_0_ASET |
 	      CTXDESC_CD_0_AA64 | FIELD_PREP(CTXDESC_CD_0_ASID, cfg->cd.asid) |
 	      CTXDESC_CD_0_V;
-
 	cfg->cdptr[0] = cpu_to_le64(val);
 
 	val = cfg->cd.ttbr & CTXDESC_CD_1_TTB0_MASK;
@@ -314,10 +311,8 @@ static int arm_smmu_domain_finalise(struct iommu_domain *domain)
 	struct virt_arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	struct virt_arm_smmu_device *smmu = smmu_domain->smmu;
 	struct msm_io_pgtable_info *pgtbl_info = &smmu_domain->pgtbl_info;
-
 	if (domain->type == IOMMU_DOMAIN_IDENTITY)
 		return 0;
-
 	ias = min_t(unsigned long, 48, VA_BITS);
 	oas = smmu->ias;
 	fmt = ARM_64_LPAE_S1;
@@ -332,21 +327,17 @@ static int arm_smmu_domain_finalise(struct iommu_domain *domain)
 		.tlb		= &virt_arm_smmu_flush_ops,
 		.iommu_dev	= smmu->dev,
 	};
-
 	pgtbl_ops = alloc_io_pgtable_ops(fmt, &pgtbl_info->pgtbl_cfg, smmu_domain);
 	if (!pgtbl_ops)
 		return -ENOMEM;
-
 	domain->pgsize_bitmap = pgtbl_info->pgtbl_cfg.pgsize_bitmap;
 	domain->geometry.aperture_end = (1UL << pgtbl_info->pgtbl_cfg.ias) - 1;
 	domain->geometry.force_aperture = true;
-
 	ret = finalise_stage_fn(smmu_domain, &pgtbl_info->pgtbl_cfg);
 	if (ret < 0) {
 		free_io_pgtable_ops(pgtbl_ops);
 		return ret;
 	}
-
 	smmu_domain->pgtbl_ops = pgtbl_ops;
 	return 0;
 }
@@ -379,6 +370,7 @@ static void virt_arm_smmu_get_resv_regions(struct device *dev,
 	qcom_iommu_generate_resv_regions(dev, head);
 
 }
+
 
 static int virt_arm_smmu_of_xlate(struct device *dev, struct of_phandle_args *args)
 {
@@ -584,132 +576,66 @@ static int virt_arm_smmu_map(struct iommu_domain *domain, unsigned long iova,
 	return ops->map(ops, iova, paddr, size, prot, gfp);
 }
 
-static int virt_arm_smmu_write_strtab_ent(struct virt_arm_smmu_master *master,
-					 struct arm_smmu_ste_cfg *ste_cfg)
+
+static int virt_arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
 {
-	u64 val = le64_to_cpu(ste_cfg->ste[0]);
-	struct virt_arm_smmu_device *smmu = NULL;
+	int ret = 0;
+	u64 val;
+	struct virt_arm_smmu_device *smmu;
 	struct arm_smmu_s1_cfg *s1_cfg = NULL;
-	struct virt_arm_smmu_domain *smmu_domain = NULL;
+	struct arm_smmu_ste_cfg *ste_cfg;
+	struct virt_arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 
-	if (master) {
-		smmu_domain = master->domain;
-		smmu = master->smmu;
+
+	smmu = smmu_domain->smmu;
+	ret = arm_smmu_domain_finalise(domain);
+	if (ret) {
+		smmu_domain->smmu = NULL;
+		return ret;
 	}
-	if (!smmu_domain)
-		return -EINVAL;
-
+	virt_arm_smmu_write_ctx_desc(&smmu_domain->s1_cfg);
+	ste_cfg = kzalloc(sizeof(*ste_cfg),GFP_KERNEL);
+	if (!ste_cfg)
+		return -ENOMEM;
+	ste_cfg->ste = dmam_alloc_coherent(smmu->dev,
+				(STRTAB_STE_DWORDS << 3), &ste_cfg->stedma,
+				GFP_KERNEL | __GFP_ZERO);
+	if (!ste_cfg->ste) {
+		dev_err(smmu->dev, "failed to allocate memory for stream table entry\n");
+		goto free_mem;
+	}
+	ste_cfg->sid =0x60100;
+	val = le64_to_cpu(ste_cfg->ste[0]);
 	s1_cfg = &smmu_domain->s1_cfg;
 	val = STRTAB_STE_0_V;
-
 	if (s1_cfg) {
 		ste_cfg->ste[1] = cpu_to_le64(
-			 FIELD_PREP(STRTAB_STE_1_S1CIR, STRTAB_STE_1_S1C_CACHE_WBRA) |
-			 FIELD_PREP(STRTAB_STE_1_S1COR, STRTAB_STE_1_S1C_CACHE_WBRA) |
-			 FIELD_PREP(STRTAB_STE_1_S1CSH, ARM_SMMU_SH_ISH) |
-			 FIELD_PREP(STRTAB_STE_1_STRW, STRTAB_STE_1_STRW_NSEL1));
-
+				FIELD_PREP(STRTAB_STE_1_S1CIR, STRTAB_STE_1_S1C_CACHE_WBRA) |
+				FIELD_PREP(STRTAB_STE_1_S1COR, STRTAB_STE_1_S1C_CACHE_WBRA) |
+				FIELD_PREP(STRTAB_STE_1_S1CSH, ARM_SMMU_SH_ISH) |
+				FIELD_PREP(STRTAB_STE_1_STRW, STRTAB_STE_1_STRW_NSEL1) |
+				FIELD_PREP(STRAB_STE_1_MEM, 0xF) |
+				FIELD_PREP(STRAB_STE_1_MTCFG, 0x1)|
+				FIELD_PREP(STRTAB_STE_1_SHCFG, 0x2));
 		ste_cfg->ste[1] |= cpu_to_le64(STRTAB_STE_1_S1STALLD);
-
-		/* S1 Translate S2 Bypass only supported*/
 		val |= (s1_cfg->cdptr_dma & STRTAB_STE_0_S1CTXPTR_MASK) |
-			FIELD_PREP(STRTAB_STE_0_CFG, STRTAB_STE_0_CFG_S1_TRANS);
+			FIELD_PREP(STRTAB_STE_0_CFG, STRTAB_STE_0_CFG_S2_TRANS);
 	}
 	WRITE_ONCE(ste_cfg->ste[0], cpu_to_le64(val));
 	if (qcom_scm_paravirt_smmu_attach(ste_cfg->sid, 0, ste_cfg->stedma,
 		(STRTAB_STE_DWORDS << 3), s1_cfg->cdptr_dma, (CTXDESC_CD_DWORDS << 3))) {
 		pr_err("SCM call failed to attach for SID:0x%x\n", ste_cfg->sid);
-		return -EINVAL;
+		goto free_mem;
 	}
+	pr_err("SCM call sucessed to attach for SID:0x%x\n", ste_cfg->sid);
 	return 0;
-}
-
-static int virt_arm_smmu_install_ste_for_dev(struct virt_arm_smmu_master *master)
-{
-	struct virt_arm_smmu_device *smmu = master->smmu;
-	int i, j;
-	struct arm_smmu_ste_cfg *iter;
-
-	struct arm_smmu_ste_cfg *ste_cfg = kzalloc(sizeof(*ste_cfg) * master->num_sids,
-						GFP_KERNEL);
-	if (!ste_cfg)
-		return -ENOMEM;
-
-	iter = ste_cfg;
-
-	for (i = 0; i < master->num_sids; i++) {
-		iter->ste = dmam_alloc_coherent(smmu->dev,
-				(STRTAB_STE_DWORDS << 3), &iter->stedma,
-				GFP_KERNEL | __GFP_ZERO);
-		if (!iter->ste) {
-			dev_err(smmu->dev, "failed to allocate memory for stream table entry\n");
-			goto free_mem;
-		}
-		iter->sid = master->sids[i];
-		if (virt_arm_smmu_write_strtab_ent(master, iter))
-			goto free_mem;
-		iter++;
-	}
-	master->ste_cfg = ste_cfg;
-	return 0;
+	
 free_mem:
-	iter = ste_cfg;
-	for (j = 0; j <= i; j++) {
-		if (iter->ste)
-			dmam_free_coherent(smmu->dev, (STRTAB_STE_DWORDS << 3),
-				iter->ste, iter->stedma);
-		iter++;
-	}
+	if (ste_cfg->ste)
+		dmam_free_coherent(smmu->dev, (STRTAB_STE_DWORDS << 3),
+				ste_cfg->ste, ste_cfg->stedma);
 	kfree(ste_cfg);
-	return -ENOMEM;
-}
-
-static int virt_arm_smmu_attach_dev(struct iommu_domain *domain, struct device *dev)
-{
-	int ret = 0;
-	unsigned long flags;
-	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
-	struct virt_arm_smmu_device *smmu;
-	struct virt_arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
-	struct virt_arm_smmu_master *master;
-
-	if (!fwspec)
-		return -ENOENT;
-
-	master = dev_iommu_priv_get(dev);
-	smmu = master->smmu;
-	mutex_lock(&smmu_domain->init_mutex);
-
-	if (!smmu_domain->smmu) {
-		smmu_domain->smmu = smmu;
-		ret = arm_smmu_domain_finalise(domain);
-		if (ret) {
-			smmu_domain->smmu = NULL;
-			goto out_unlock;
-		}
-	} else if (smmu_domain->smmu != smmu) {
-		dev_err(dev,
-			"cannot attach to SMMU %s (upstream of %s)\n",
-			dev_name(smmu_domain->smmu->dev),
-			dev_name(smmu->dev));
-		ret = -ENXIO;
-		goto out_unlock;
-	}
-
-	master->domain = smmu_domain;
-
-	virt_arm_smmu_write_ctx_desc(smmu, &smmu_domain->s1_cfg);
-	ret = virt_arm_smmu_install_ste_for_dev(master);
-	if (ret)
-		goto out_unlock;
-
-	spin_lock_irqsave(&smmu_domain->devices_lock, flags);
-	list_add(&master->domain_head, &smmu_domain->devices);
-	spin_unlock_irqrestore(&smmu_domain->devices_lock, flags);
-
-out_unlock:
-	mutex_unlock(&smmu_domain->init_mutex);
-	return ret;
+	return -ENOMEM;;
 }
 
 static void virt_arm_smmu_domain_free(struct iommu_domain *domain)
@@ -814,7 +740,7 @@ static struct iommu_ops  virt_arm_smmu_ops = {
 			.iova_to_phys           = virt_arm_smmu_iova_to_phys,
 	}
 };
-
+/*
 static void virt_arm_smmu_iommu_pcie_device_probe(void *data, struct iommu_device *iommu,
 					struct bus_type *bus, bool *skip)
 {
@@ -823,11 +749,17 @@ static void virt_arm_smmu_iommu_pcie_device_probe(void *data, struct iommu_devic
 	*skip = strcmp(bus->name, "pci");
 }
 
+struct of_phandle_args;
+*/
 static int virt_arm_smmu_device_probe(struct platform_device *pdev)
 {
 	int ret;
+	unsigned int type;
+	struct of_phandle_args *args=NULL;
 	struct virt_arm_smmu_device *smmu;
 	struct device *dev = &pdev->dev;
+	struct iommu_domain *domain;
+	struct virt_arm_smmu_domain *smmu_domain;
 
 	smmu = devm_kzalloc(dev, sizeof(*smmu), GFP_KERNEL);
 	if (!smmu)
@@ -848,15 +780,17 @@ static int virt_arm_smmu_device_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	register_trace_android_vh_bus_iommu_probe(virt_arm_smmu_iommu_pcie_device_probe,
-						(void *)&smmu->iommu);
 
-	ret = iommu_device_register(&smmu->iommu, &virt_arm_smmu_ops, dev);
-	if (ret) {
-		dev_err(dev, "Failed to register iommu\n");
-		return ret;
-	}
 	platform_set_drvdata(pdev, smmu);
+	virt_arm_smmu_add_device(dev);
+	virt_arm_smmu_of_xlate(dev, args);
+	virt_arm_smmu_device_group(dev);
+	type=virt_arm_smmu_def_domain_type(dev);
+	domain=virt_arm_smmu_domain_alloc(type);
+	smmu_domain=to_smmu_domain(domain);
+	smmu_domain->smmu=smmu;
+	virt_arm_smmu_attach_dev(domain, dev);
+
 	return 0;
 }
 
