@@ -559,9 +559,9 @@ int audioreach_send_cmd_sync(struct device *dev, gpr_device_t *gdev,
 
 	if (rsp_opcode)
 		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode) ||
-					(result->opcode == rsp_opcode),	5 * HZ);
+					(result->opcode == rsp_opcode),	2 * HZ);
 	else
-		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode), 5 * HZ);
+		rc = wait_event_timeout(*cmd_wait, (result->opcode == hdr->opcode), 2 * HZ);
 
 	if (!rc) {
 		dev_err(dev, "CMD timeout for [%x] opcode\n", hdr->opcode);
