@@ -66,7 +66,7 @@ struct vh_buf_header {
 #define IN_BUF_SIZE         5120
 #define OUT_SMALL_BUF_SIZE  512
 #define OUT_MEDIUM_BUF_SIZE 5120
-#define OUT_LARGE_BUF_SIZE  51200
+#define OUT_LARGE_BUF_SIZE  (64 * 1024)
 
 #define IN_BUF_NUM         100 /*64*/
 #define OUT_SMALL_BUF_NUM  200 /*64*/
@@ -297,7 +297,7 @@ static void virthab_recv_rxq_task(struct virtqueue *vq)
 	if (!vpc)
 		return;
 
-	tasklet_schedule(&vpc->task);
+	tasklet_hi_schedule(&vpc->task);
 }
 
 static void init_pool_list(void *pool, int buf_size, int buf_num,
