@@ -580,6 +580,7 @@ struct dwc3_msm {
 	bool			host_poweroff_in_pm_suspend;
 	bool			disable_host_ssphy_powerdown;
 	bool			hibernate_skip_thaw;
+	bool			enable_host_slow_suspend;
 	unsigned long		lpm_flags;
 	unsigned int		vbus_draw;
 #define MDWC3_SS_PHY_SUSPEND		BIT(0)
@@ -4223,7 +4224,6 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 		return 0;
 	}
 
-	msm_dwc3_perf_vote_enable(mdwc, false);
 	if (dwc) {
 		if (!mdwc->in_host_mode) {
 			evt = dwc->ev_buf;
@@ -4279,6 +4279,8 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 			pm_request_resume(&dwc->xhci->dev);
 		return ret;
 	}
+
+	msm_dwc3_perf_vote_enable(mdwc, false);
 
 	/* disable power event irq, hs and ss phy irq is used as wake up src */
 	disable_irq_nosync(mdwc->wakeup_irq[PWR_EVNT_IRQ].irq);
@@ -6129,6 +6131,8 @@ static int dwc3_msm_parse_params(struct dwc3_msm *mdwc, struct device_node *node
 
 	mdwc->hibernate_skip_thaw = of_property_read_bool(node,
 					"qcom,hibernate-skip-thaw");
+	mdwc->enable_host_slow_suspend = of_property_read_bool(node,
+				"qcom,enable_host_slow_suspend");
 
 	mdwc->dis_sending_cm_l1_quirk = of_property_read_bool(node,
 				"qcom,dis-sending-cm-l1-quirk");
@@ -6168,6 +6172,43 @@ static int dwc3_msm_parse_params(struct dwc3_msm *mdwc, struct device_node *node
 	if (of_device_is_available(wcd_node))
 		mdwc->wcd_usbss = true;
 	of_node_put(wcd_node);
+
+	return 0;
+}
+static int dwc3_msm_register_interrupts(struct platform_device *pdev)
+{
+	struct dwc3_msm *mdwc = platform_get_drvdata(pdev);
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < USB_MAX_IRQ; i++) {
+		mdwc->wakeup_irq[i].irq = platform_get_irq_byname(pdev,
+					usb_irq_info[i].name);
+		if (mdwc->wakeup_irq[i].irq < 0) {
+			/* pwr_evnt_irq is only mandatory irq */
+			if (usb_irq_info[i].required) {
+				dev_err(&pdev->dev, "get_irq for %s failed\n\n",
+						usb_irq_info[i].name);
+				return -EINVAL;
+			}
+			mdwc->wakeup_irq[i].irq = 0;
+		} else {
+			irq_set_status_flags(mdwc->wakeup_irq[i].irq,
+						IRQ_NOAUTOEN);
+
+			ret = devm_request_threaded_irq(&pdev->dev,
+					mdwc->wakeup_irq[i].irq,
+					msm_dwc3_pwr_irq,
+					msm_dwc3_pwr_irq_thread,
+					usb_irq_info[i].irq_type,
+					usb_irq_info[i].name, mdwc);
+			if (ret) {
+				dev_err(&pdev->dev, "irq req %s failed: %d\n\n",
+						usb_irq_info[i].name, ret);
+				return ret;
+			}
+		}
+	}
 
 	return 0;
 }
@@ -6241,35 +6282,9 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		mdwc->lpm_to_suspend_delay = 0;
 	}
 
-	for (i = 0; i < USB_MAX_IRQ; i++) {
-		mdwc->wakeup_irq[i].irq = platform_get_irq_byname(pdev,
-					usb_irq_info[i].name);
-		if (mdwc->wakeup_irq[i].irq < 0) {
-			/* pwr_evnt_irq is only mandatory irq */
-			if (usb_irq_info[i].required) {
-				dev_err(&pdev->dev, "get_irq for %s failed\n\n",
-						usb_irq_info[i].name);
-				ret = -EINVAL;
-				goto err;
-			}
-			mdwc->wakeup_irq[i].irq = 0;
-		} else {
-			irq_set_status_flags(mdwc->wakeup_irq[i].irq,
-						IRQ_NOAUTOEN);
-
-			ret = devm_request_threaded_irq(&pdev->dev,
-					mdwc->wakeup_irq[i].irq,
-					msm_dwc3_pwr_irq,
-					msm_dwc3_pwr_irq_thread,
-					usb_irq_info[i].irq_type,
-					usb_irq_info[i].name, mdwc);
-			if (ret) {
-				dev_err(&pdev->dev, "irq req %s failed: %d\n\n",
-						usb_irq_info[i].name, ret);
-				goto err;
-			}
-		}
-	}
+	ret = dwc3_msm_register_interrupts(pdev);
+	if (ret)
+		goto err;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "core_base");
 	if (!res) {
@@ -6470,6 +6485,12 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	}
 
 	mdwc->force_disconnect = false;
+
+	/* Add pm_qos with default mode intially */
+	if (mdwc->pm_qos_latency)
+		cpu_latency_qos_add_request(&mdwc->pm_qos_req_dma,
+					    PM_QOS_DEFAULT_VALUE);
+
 	return 0;
 
 put_dwc3:
@@ -6519,6 +6540,10 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	msm_dwc3_perf_vote_enable(mdwc, false);
 	cancel_work_sync(&mdwc->sm_work);
+
+	/* Remove pm_qos request */
+	if (mdwc->pm_qos_latency)
+		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 
 	if (mdwc->hs_phy)
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
@@ -6678,6 +6703,17 @@ static int dwc3_msm_host_notifier(struct notifier_block *nb,
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	struct usb_device *udev = ptr;
 
+	if (event == USB_BUS_ADD && mdwc->enable_host_slow_suspend) {
+		struct usb_bus *ubus = ptr;
+		struct usb_hcd *hcd = bus_to_hcd(ubus);
+		struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+		if (usb_hcd_is_primary_hcd(hcd)) {
+			dev_dbg(ubus->controller, "enable slow suspend\n");
+			xhci->quirks |= XHCI_SLOW_SUSPEND;
+		}
+	}
+
 	if (event != USB_DEVICE_ADD && event != USB_DEVICE_REMOVE)
 		return NOTIFY_DONE;
 
@@ -6820,9 +6856,6 @@ static void msm_dwc3_perf_vote_enable(struct dwc3_msm *mdwc, bool enable)
 		/* make sure when enable work, save a valid start irq count */
 		mdwc->irq_cnt = irq_desc->tot_count;
 
-		/* start default mode intially */
-		cpu_latency_qos_add_request(&mdwc->pm_qos_req_dma,
-					    PM_QOS_DEFAULT_VALUE);
 		schedule_delayed_work(&mdwc->perf_vote_work,
 				msecs_to_jiffies(PM_QOS_DEFAULT_SAMPLE_MS));
 	} else {
@@ -6830,7 +6863,6 @@ static void msm_dwc3_perf_vote_enable(struct dwc3_msm *mdwc, bool enable)
 			return;
 		cancel_delayed_work_sync(&mdwc->perf_vote_work);
 		msm_dwc3_perf_vote_update(mdwc, false);
-		cpu_latency_qos_remove_request(&mdwc->pm_qos_req_dma);
 	}
 }
 

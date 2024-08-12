@@ -1,6 +1,7 @@
 la_targets = [
     # keep sorted
     "anorak",
+    "autoghgvm",
     "autogvm",
     "blair",
     "gen3auto",

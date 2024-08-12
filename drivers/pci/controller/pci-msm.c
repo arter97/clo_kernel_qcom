@@ -1060,7 +1060,8 @@ struct pcie_i2c_ctrl {
 };
 
 enum i2c_client_id {
-	I2C_CLIENT_ID_NTN3,
+	I2C_CLIENT_ID_INVALID = 0xff,
+	I2C_CLIENT_ID_NTN3 = 0,
 	I2C_CLIENT_ID_MAX,
 };
 
@@ -6645,7 +6646,9 @@ int msm_pcie_enumerate(u32 rc_idx)
 	pci_host_probe(bridge);
 
 	dev->enumerated = true;
-	schedule_work(&pcie_drv.drv_connect);
+
+	if (dev->drv_supported)
+		schedule_work(&pcie_drv.drv_connect);
 
 	msm_pcie_write_mask(dev->dm_core +
 		PCIE20_COMMAND_STATUS, 0, BIT(2)|BIT(1));
@@ -8808,11 +8811,13 @@ static int msm_pcie_probe(struct platform_device *pdev)
 			goto decrease_rc_num;
 
 	} else {
-		ret = register_rpmsg_driver(&msm_pcie_drv_rpmsg_driver);
-		if (ret && ret != -EBUSY)
-			PCIE_ERR(pcie_dev,
-				"PCIe %d: DRV: rpmsg register fail: ret: %d\n",
-							pcie_dev->rc_idx, ret);
+		if (pcie_dev->drv_name || pcie_dev->drv_supported) {
+			ret = register_rpmsg_driver(&msm_pcie_drv_rpmsg_driver);
+			if (ret && ret != -EBUSY)
+				PCIE_ERR(pcie_dev,
+					"PCIe %d: DRV: rpmsg register fail: ret: %d\n",
+								pcie_dev->rc_idx, ret);
+		}
 	}
 
 	msm_pcie_get_pinctrl(pcie_dev, pdev);
@@ -10044,7 +10049,7 @@ static int pcie_i2c_ctrl_probe(struct i2c_client *client,
 				    const struct i2c_device_id *id)
 {
 	int rc_index = -EINVAL;
-	enum i2c_client_id client_id;
+	enum i2c_client_id client_id = I2C_CLIENT_ID_INVALID;
 	struct pcie_i2c_ctrl *i2c_ctrl;
 	const struct of_device_id *match;
 	struct i2c_driver_data *data;

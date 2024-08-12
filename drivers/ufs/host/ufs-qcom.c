@@ -28,7 +28,7 @@
 #include <trace/hooks/ufshcd.h>
 #include <linux/ipc_logging.h>
 #include <soc/qcom/minidump.h>
-#ifdef CONFIG_SCHED_WALT
+#if IS_ENABLED(CONFIG_SCHED_WALT)
 #include <linux/sched/walt.h>
 #endif
 #include <linux/nvmem-consumer.h>
@@ -1667,7 +1667,7 @@ static void ufs_qcom_toggle_pri_affinity(struct ufs_hba *hba, bool on)
 	if (on && atomic_read(&host->therm_mitigation))
 		return;
 
-#ifdef CONFIG_SCHED_WALT
+#if IS_ENABLED(CONFIG_SCHED_WALT)
 	if (on)
 		sched_set_boost(STORAGE_BOOST);
 	else
@@ -3557,7 +3557,7 @@ static void ufs_qcom_register_minidump(uintptr_t vaddr, u64 size,
 	if (!msm_minidump_enabled())
 		return;
 
-	scnprintf(md_entry.name, sizeof(md_entry.name), "%s_%d",
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s%d",
 			buf_name, id);
 	md_entry.virt_addr = vaddr;
 	md_entry.phys_addr = virt_to_phys((void *)vaddr);
@@ -6057,7 +6057,6 @@ static int ufs_qcom_suspend_prepare(struct device *dev)
 	else
 		hba->spm_lvl = host->spm_lvl_default;
 
-
 	return ufshcd_suspend_prepare(dev);
 }
 
@@ -6071,18 +6070,40 @@ static void ufs_qcom_resume_complete(struct device *dev)
 	return ufshcd_resume_complete(dev);
 }
 
+static void ufs_qcom_remove_s2r_cap(struct device *dev)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	hba->caps &= ~(UFSHCD_CAP_CLK_GATING |
+		UFSHCD_CAP_HIBERN8_WITH_CLK_GATING |
+		UFSHCD_CAP_CLK_SCALING |
+		UFSHCD_CAP_AUTO_BKOPS_SUSPEND |
+		UFSHCD_CAP_AGGR_POWER_COLLAPSE |
+		UFSHCD_CAP_WB_WITH_CLK_SCALING);
+
+}
+
+static void ufs_qcom_set_s2r_cap(struct device *dev)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	hba->caps |= UFSHCD_CAP_CLK_GATING |
+		UFSHCD_CAP_HIBERN8_WITH_CLK_GATING |
+		UFSHCD_CAP_CLK_SCALING |
+		UFSHCD_CAP_AUTO_BKOPS_SUSPEND |
+		UFSHCD_CAP_AGGR_POWER_COLLAPSE |
+		UFSHCD_CAP_WB_WITH_CLK_SCALING;
+
+}
+
 static int ufs_qcom_system_freeze(struct device *dev)
 {
-	struct ufs_hba *hba = NULL;
-
 	if (!is_bootdevice_ufs) {
 		dev_info(dev, "UFS is not boot dev.\n");
 		return 0;
 	}
 
-	hba = dev_get_drvdata(dev);
-	hba->spm_lvl = UFS_PM_LVL_5;
-
+	ufs_qcom_remove_s2r_cap(dev);
 	return ufshcd_system_freeze(dev);
 }
 
@@ -6092,7 +6113,7 @@ static int ufs_qcom_system_restore(struct device *dev)
 		dev_info(dev, "UFS is not boot dev.\n");
 		return 0;
 	}
-
+	ufs_qcom_set_s2r_cap(dev);
 	return ufshcd_system_restore(dev);
 }
 

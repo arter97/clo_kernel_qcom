@@ -5,6 +5,7 @@
  */
 #include "hab.h"
 #include "hab_grantable.h"
+#include "hab_trace_os.h"
 
 static int hab_rx_queue_empty(struct virtual_channel *vchan)
 {
@@ -234,6 +235,8 @@ static void hab_msg_queue(struct virtual_channel *vchan,
 	hab_spin_lock(&vchan->rx_lock, irqs_disabled);
 	list_add_tail(&message->node, &vchan->rx_list);
 	hab_spin_unlock(&vchan->rx_lock, irqs_disabled);
+
+	trace_hab_pchan_recv_wakeup(vchan->pchan);
 
 	wake_up(&vchan->rx_queue);
 }
@@ -478,7 +481,13 @@ static int hab_receive_export_desc(struct physical_channel *pchan,
 			pchan->vmid_remote, exp_desc->domid_local);
 	exp_desc->domid_remote = pchan->vmid_remote;
 	exp_desc->domid_local = pchan->vmid_local;
+	/*
+	 * re-init pchan, vchan to local pointers for local usage.
+	 * exp->ctx is left un-initialized due to no local usage.
+	 */
 	exp_desc->pchan = pchan;
+	exp_desc->vchan = vchan;
+
 	if (pchan->mem_proto == 1) {
 		exp_desc->vcid_remote = exp_desc->vcid_local;
 		exp_desc->vcid_local = vchan->id;
