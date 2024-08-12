@@ -1955,6 +1955,11 @@ static int dwc3_read_port_info(struct dwc3 *dwc)
 
 unmap_reg:
 	iounmap(regs);
+
+	if (dwc->num_ports > MAX_PORTS_SUPPORTED ||
+	    dwc->num_ss_ports > MAX_PORTS_SUPPORTED)
+		ret = -EINVAL;
+
 	return ret;
 }
 
