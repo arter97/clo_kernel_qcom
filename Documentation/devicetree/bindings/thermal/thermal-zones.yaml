@@ -212,8 +212,6 @@ patternProperties:
             additionalProperties: false
 
     required:
-      - polling-delay
-      - polling-delay-passive
       - thermal-sensors
       - trips
 
