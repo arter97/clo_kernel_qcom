@@ -20,6 +20,7 @@ description: |
 properties:
   compatible:
     enum:
+      - qcom,qcs8300-llcc
       - qcom,qdu1000-llcc
       - qcom,sa8775p-llcc
       - qcom,sc7180-llcc
