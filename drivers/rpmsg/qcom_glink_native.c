@@ -1638,8 +1638,11 @@ static irqreturn_t qcom_glink_native_intr(int irq, void *data)
 static irqreturn_t qcom_glink_native_thread_intr(int irq, void *data)
 {
 	struct qcom_glink *glink = data;
+	int ret;
 
-	qcom_glink_native_rx(glink, 0);
+	do {
+		ret = qcom_glink_native_rx(glink, 0);
+	} while (ret >= sizeof(struct glink_msg));
 
 	return IRQ_HANDLED;
 }
@@ -2542,7 +2545,7 @@ int qcom_glink_native_start(struct qcom_glink *glink)
 	ret = devm_request_threaded_irq(dev, irq,
 					qcom_glink_native_intr,
 					qcom_glink_native_thread_intr,
-					IRQF_NO_SUSPEND | IRQF_ONESHOT,
+					IRQF_NO_SUSPEND,
 					glink->irqname, glink);
 	if (ret) {
 		dev_err(dev, "failed to request IRQ with %d\n", ret);

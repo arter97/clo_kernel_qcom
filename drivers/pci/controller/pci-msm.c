@@ -75,8 +75,10 @@
 #define PCIE20_PARF_PHY_CTRL (0x40)
 #define PCIE20_PARF_TEST_BUS (0xe4)
 #define PCIE20_PARF_MHI_CLOCK_RESET_CTRL (0x174)
+#define PCIE20_PARF_AXI_MSTR_RD_ADDR_HALT (0x1a4)
 #define PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT (0x1a8)
 
+#define PCIE20_PCIE_PARF_AXI_MSTR_WR_NS_BDF_HALT (0x4a0)
 #define PCIE20_PARF_LTSSM (0x1b0)
 #define LTSSM_EN BIT(8)
 #define SW_CLR_FLUSH_MODE BIT(10)
@@ -1058,7 +1060,8 @@ struct pcie_i2c_ctrl {
 };
 
 enum i2c_client_id {
-	I2C_CLIENT_ID_NTN3,
+	I2C_CLIENT_ID_INVALID = 0xff,
+	I2C_CLIENT_ID_NTN3 = 0,
 	I2C_CLIENT_ID_MAX,
 };
 
@@ -1188,9 +1191,11 @@ struct msm_pcie_dev_t {
 	bool lpi_enable;
 	bool linkdown_recovery_enable;
 	bool gdsc_clk_drv_ss_nonvotable;
+	bool pcie_bdf_halt_dis;
 
 	uint32_t pcie_parf_cesta_config;
 
+	bool pcie_halt_feature_dis;
 	uint32_t rc_idx;
 	uint32_t phy_ver;
 	bool drv_ready;
@@ -1279,6 +1284,8 @@ struct msm_pcie_dev_t {
 #if IS_ENABLED(CONFIG_I2C)
 	struct pcie_i2c_ctrl i2c_ctrl;
 #endif
+
+	bool fmd_enable;
 };
 
 struct msm_root_dev_t {
@@ -1590,6 +1597,55 @@ int msm_pcie_reg_dump(struct pci_dev *pci_dev, u8 *buff, u32 len)
 	return 0;
 }
 EXPORT_SYMBOL(msm_pcie_reg_dump);
+
+static void msm_pcie_config_perst(struct msm_pcie_dev_t *dev, bool assert)
+{
+	if (dev->fmd_enable) {
+		pr_err("PCIe: FMD is enabled for RC%d\n", dev->rc_idx);
+		return;
+	}
+
+	if (assert) {
+		PCIE_INFO(dev, "PCIe: RC%d: assert PERST\n",
+			    dev->rc_idx);
+		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
+				    dev->gpio[MSM_PCIE_GPIO_PERST].on);
+	} else {
+		PCIE_INFO(dev, "PCIe: RC%d: de-assert PERST\n",
+			    dev->rc_idx);
+		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
+					1 - dev->gpio[MSM_PCIE_GPIO_PERST].on);
+	}
+}
+
+int msm_pcie_fmd_enable(struct pci_dev *pci_dev)
+{
+	struct pci_dev *root_pci_dev;
+	struct msm_pcie_dev_t *pcie_dev;
+
+	root_pci_dev = pcie_find_root_port(pci_dev);
+	if (!root_pci_dev)
+		return -ENODEV;
+
+	pcie_dev = PCIE_BUS_PRIV_DATA(root_pci_dev->bus);
+	if (!pcie_dev) {
+		pr_err("PCIe: did not find RC for pci endpoint device.\n");
+		return -ENODEV;
+	}
+
+	PCIE_INFO(pcie_dev, "RC%d Enable FMD\n", pcie_dev->rc_idx);
+	if (pcie_dev->fmd_enable) {
+		pr_err("PCIe: FMD is already enabled for RC%d\n", pcie_dev->rc_idx);
+		return 0;
+	}
+
+	if (!gpio_get_value(pcie_dev->gpio[MSM_PCIE_GPIO_PERST].num))
+		msm_pcie_config_perst(pcie_dev, false);
+
+	pcie_dev->fmd_enable = true;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(msm_pcie_fmd_enable);
 
 static void msm_pcie_write_reg(void __iomem *base, u32 offset, u32 value)
 {
@@ -2101,6 +2157,10 @@ static void msm_pcie_show_status(struct msm_pcie_dev_t *dev)
 		dev->wr_halt_size);
 	PCIE_DBG_FS(dev, "slv_addr_space_size: 0x%x\n",
 		dev->slv_addr_space_size);
+	PCIE_DBG_FS(dev, "PCIe: bdf_halt_dis is %d\n",
+		dev->pcie_bdf_halt_dis);
+	PCIE_DBG_FS(dev, "PCIe: halt_feature_dis is %d\n",
+		dev->pcie_halt_feature_dis);
 	PCIE_DBG_FS(dev, "phy_status_offset: 0x%x\n",
 		dev->phy_status_offset);
 	PCIE_DBG_FS(dev, "phy_status_bit: %u\n",
@@ -2423,15 +2483,13 @@ static void msm_pcie_sel_debug_testcase(struct msm_pcie_dev_t *dev,
 	case MSM_PCIE_ASSERT_PERST:
 		PCIE_DBG_FS(dev, "\n\nPCIe: RC%d: assert PERST\n\n",
 			dev->rc_idx);
-		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-					dev->gpio[MSM_PCIE_GPIO_PERST].on);
+		msm_pcie_config_perst(dev, true);
 		usleep_range(dev->perst_delay_us_min, dev->perst_delay_us_max);
 		break;
 	case MSM_PCIE_DEASSERT_PERST:
 		PCIE_DBG_FS(dev, "\n\nPCIe: RC%d: de-assert PERST\n\n",
 			dev->rc_idx);
-		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-					1 - dev->gpio[MSM_PCIE_GPIO_PERST].on);
+		msm_pcie_config_perst(dev, false);
 		usleep_range(dev->perst_delay_us_min, dev->perst_delay_us_max);
 		break;
 	case MSM_PCIE_KEEP_RESOURCES_ON:
@@ -5755,8 +5813,7 @@ static int msm_pcie_link_train(struct msm_pcie_dev_t *dev)
 #endif
 		PCIE_INFO(dev, "PCIe: Assert the reset of endpoint of RC%d.\n",
 			dev->rc_idx);
-		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-			dev->gpio[MSM_PCIE_GPIO_PERST].on);
+		msm_pcie_config_perst(dev, true);
 		PCIE_ERR(dev, "PCIe RC%d link initialization failed\n",
 			dev->rc_idx);
 		return MSM_PCIE_ERROR;
@@ -6093,10 +6150,28 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 	msm_pcie_write_reg(dev->parf, PCIE20_PARF_SLV_ADDR_SPACE_SIZE,
 				dev->slv_addr_space_size);
 
-	val = dev->wr_halt_size ? dev->wr_halt_size :
-		readl_relaxed(dev->parf + PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT);
-	msm_pcie_write_reg(dev->parf, PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT,
+	if (dev->pcie_halt_feature_dis) {
+		/* Disable PCIe Wr halt window */
+		val = readl_relaxed(dev->parf + PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT,
+				(~BIT(31)) & val);
+
+		/* Disable PCIe Rd halt window */
+		val = readl_relaxed(dev->parf + PCIE20_PARF_AXI_MSTR_RD_ADDR_HALT);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_AXI_MSTR_RD_ADDR_HALT,
+			(~BIT(0)) & val);
+	} else {
+		val = dev->wr_halt_size ? dev->wr_halt_size :
+			readl_relaxed(dev->parf + PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_AXI_MSTR_WR_ADDR_HALT,
 				BIT(31) | val);
+	}
+
+	if (dev->pcie_bdf_halt_dis) {
+		val = readl_relaxed(dev->parf + PCIE20_PCIE_PARF_AXI_MSTR_WR_NS_BDF_HALT);
+		msm_pcie_write_reg(dev->parf, PCIE20_PCIE_PARF_AXI_MSTR_WR_NS_BDF_HALT,
+				(~BIT(0)) & val);
+	}
 
 	/* init tcsr */
 	if (dev->tcsr_config)
@@ -6144,8 +6219,7 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 
 	PCIE_INFO(dev, "PCIe: Release the reset of endpoint of RC%d.\n",
 		dev->rc_idx);
-	gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-				1 - dev->gpio[MSM_PCIE_GPIO_PERST].on);
+	msm_pcie_config_perst(dev, false);
 	usleep_range(dev->perst_delay_us_min, dev->perst_delay_us_max);
 
 	ep_up_timeout = jiffies + usecs_to_jiffies(EP_UP_TIMEOUT_US);
@@ -6262,10 +6336,8 @@ static int msm_pcie_enable(struct msm_pcie_dev_t *dev)
 
 	PCIE_INFO(dev, "PCIe: Assert the reset of endpoint of RC%d.\n",
 		dev->rc_idx);
-	gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-				dev->gpio[MSM_PCIE_GPIO_PERST].on);
-	usleep_range(PERST_PROPAGATION_DELAY_US_MIN,
-				 PERST_PROPAGATION_DELAY_US_MAX);
+	msm_pcie_config_perst(dev, true);
+	usleep_range(dev->perst_delay_us_min, dev->perst_delay_us_max);
 
 	/* enable power */
 	ret = msm_pcie_vreg_init(dev);
@@ -6395,8 +6467,7 @@ static void msm_pcie_disable(struct msm_pcie_dev_t *dev)
 	PCIE_INFO(dev, "PCIe: Assert the reset of endpoint of RC%d.\n",
 		dev->rc_idx);
 
-	gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-				dev->gpio[MSM_PCIE_GPIO_PERST].on);
+	msm_pcie_config_perst(dev, true);
 
 	if (dev->phy_power_down_offset)
 		msm_pcie_write_reg(dev->phy, dev->phy_power_down_offset, 0);
@@ -6561,6 +6632,7 @@ int msm_pcie_enumerate(u32 rc_idx)
 
 	PCIE_DBG(dev, "Enumerate RC%d\n", rc_idx);
 
+	dev->fmd_enable = false;
 	if (!dev->drv_ready) {
 		PCIE_DBG(dev,
 			"PCIe: RC%d: has not been successfully probed yet\n",
@@ -6619,7 +6691,9 @@ int msm_pcie_enumerate(u32 rc_idx)
 	pci_host_probe(bridge);
 
 	dev->enumerated = true;
-	schedule_work(&pcie_drv.drv_connect);
+
+	if (dev->drv_supported)
+		schedule_work(&pcie_drv.drv_connect);
 
 	msm_pcie_write_mask(dev->dm_core +
 		PCIE20_COMMAND_STATUS, 0, BIT(2)|BIT(1));
@@ -7499,7 +7573,7 @@ static void msm_pcie_handle_linkdown(struct msm_pcie_dev_t *dev)
 		return;
 	}
 
-	if (!dev->suspending) {
+	if (!dev->suspending && !dev->fmd_enable) {
 		/* PCIe registers dump on link down */
 		PCIE_DUMP(dev,
 			"PCIe:Linkdown IRQ for RC%d Dumping PCIe registers\n",
@@ -7521,8 +7595,7 @@ static void msm_pcie_handle_linkdown(struct msm_pcie_dev_t *dev)
 
 	/* assert PERST */
 	if (!(msm_pcie_keep_resources_on & BIT(dev->rc_idx)))
-		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
-				dev->gpio[MSM_PCIE_GPIO_PERST].on);
+		msm_pcie_config_perst(dev, true);
 
 	PCIE_ERR(dev, "PCIe link is down for RC%d\n", dev->rc_idx);
 
@@ -8511,6 +8584,16 @@ static void msm_pcie_read_dt(struct msm_pcie_dev_t *pcie_dev, int rc_idx,
 	PCIE_DBG(pcie_dev, "RC%d: num-parf-testbus-sel: 0x%x.\n",
 		pcie_dev->rc_idx, pcie_dev->num_parf_testbus_sel);
 
+	pcie_dev->pcie_bdf_halt_dis = of_property_read_bool(of_node,
+			"qcom,bdf-halt-dis");
+	PCIE_DBG(pcie_dev, "PCIe BDF halt feature is %s enabled.\n",
+			pcie_dev->pcie_bdf_halt_dis ? "not" : "");
+
+	pcie_dev->pcie_halt_feature_dis = of_property_read_bool(of_node,
+			"qcom,pcie-halt-feature-dis");
+	PCIE_DBG(pcie_dev, "PCIe halt feature is %s enabled.\n",
+			pcie_dev->pcie_halt_feature_dis ? "not" : "");
+
 	of_property_read_u32(of_node, "qcom,phy-status-offset",
 				&pcie_dev->phy_status_offset);
 	PCIE_DBG(pcie_dev, "RC%d: phy-status-offset: 0x%x.\n", pcie_dev->rc_idx,
@@ -8772,11 +8855,13 @@ static int msm_pcie_probe(struct platform_device *pdev)
 			goto decrease_rc_num;
 
 	} else {
-		ret = register_rpmsg_driver(&msm_pcie_drv_rpmsg_driver);
-		if (ret && ret != -EBUSY)
-			PCIE_ERR(pcie_dev,
-				"PCIe %d: DRV: rpmsg register fail: ret: %d\n",
-							pcie_dev->rc_idx, ret);
+		if (pcie_dev->drv_name || pcie_dev->drv_supported) {
+			ret = register_rpmsg_driver(&msm_pcie_drv_rpmsg_driver);
+			if (ret && ret != -EBUSY)
+				PCIE_ERR(pcie_dev,
+					"PCIe %d: DRV: rpmsg register fail: ret: %d\n",
+								pcie_dev->rc_idx, ret);
+		}
 	}
 
 	msm_pcie_get_pinctrl(pcie_dev, pdev);
@@ -10008,7 +10093,7 @@ static int pcie_i2c_ctrl_probe(struct i2c_client *client,
 				    const struct i2c_device_id *id)
 {
 	int rc_index = -EINVAL;
-	enum i2c_client_id client_id;
+	enum i2c_client_id client_id = I2C_CLIENT_ID_INVALID;
 	struct pcie_i2c_ctrl *i2c_ctrl;
 	const struct of_device_id *match;
 	struct i2c_driver_data *data;
@@ -10491,7 +10576,7 @@ static int msm_pcie_drv_send_rpmsg(struct msm_pcie_dev_t *pcie_dev,
 				   struct msm_pcie_drv_msg *msg)
 {
 	struct msm_pcie_drv_info *drv_info = pcie_dev->drv_info;
-	int ret, re_try = 5; /* sleep 5 ms per re-try */
+	int ret, re_try = 20; /* sleep 5 ms per re-try */
 	struct rpmsg_device *rpdev;
 
 	/* This function becomes a dummy call when CESTA support is present */

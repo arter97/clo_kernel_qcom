@@ -869,7 +869,8 @@ int walt_find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 			cpumask_test_cpu(pipeline_cpu, p->cpus_ptr) &&
 			cpu_active(pipeline_cpu) &&
 			!cpu_halted(pipeline_cpu)) {
-		if (!walt_pipeline_low_latency_task(cpu_rq(pipeline_cpu)->curr)) {
+		if ((p == cpu_rq(pipeline_cpu)->curr) ||
+			!walt_pipeline_low_latency_task(cpu_rq(pipeline_cpu)->curr)) {
 			best_energy_cpu = pipeline_cpu;
 			fbt_env.fastpath = PIPELINE_FASTPATH;
 			goto out;
@@ -888,7 +889,6 @@ int walt_find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 
 
 	rcu_read_lock();
-	need_idle |= uclamp_latency_sensitive(p);
 
 	fbt_env.fastpath = 0;
 	fbt_env.need_idle = need_idle;

@@ -58,7 +58,22 @@ static int hab_open(struct inode *inodep, struct file *filep)
 		return -ENOMEM;
 	}
 
-	ctx->owner = task_pid_nr(current);
+	/*
+	 * w/ the /dev/hab node split feature, when one single process
+	 * using different threads to call habmm_socket_open() w/ different
+	 * MMIDs from different MMID groups, we can know those different
+	 * uhab_context are belonging to the same process.
+	 *
+	 * even if w/o /dev/hab node split feature, there will be a case where
+	 * a child thread is responsible for managing habmm_socket_open/close,
+	 * and other child threads use vcid for communication.
+	 * If ctx->owner is pid, then context_stat will display the pid of the child thread.
+	 * This is not what we want. We hope that context_stat will display the
+	 * thread group id of the process, not the pid of a child thread.
+	 * Because the threa group id often has more information
+	 * for us to analyze and debug.
+	 */
+	ctx->owner = task_tgid_nr(current);
 	ctx->mmid_grp_index = MINOR(inodep->i_rdev);
 
 	filep->private_data = ctx;
@@ -164,6 +179,14 @@ static long hab_copy_data(struct hab_message *msg, struct hab_recv *recv_param)
 	return ret;
 }
 
+static inline long hab_check_cmd(unsigned int cmd, unsigned int data_size)
+{
+	if (!_IOC_SIZE(cmd) || !(cmd & IOC_INOUT) || (_IOC_SIZE(cmd) > data_size))
+		return -EINVAL;
+
+	return 0;
+}
+
 static long hab_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	struct uhab_context *ctx = (struct uhab_context *)filep->private_data;
@@ -179,15 +202,15 @@ static long hab_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	char names[30] = { 0 };
 	int mmid_grp_index = ctx->mmid_grp_index;
 
-	if (_IOC_SIZE(cmd) && (cmd & IOC_IN)) {
-		if (_IOC_SIZE(cmd) > sizeof(data))
-			return -EINVAL;
+	ret = hab_check_cmd(cmd, sizeof(data));
+	if (ret)
+		return ret;
 
-		if (copy_from_user(data, (void __user *)arg, _IOC_SIZE(cmd))) {
-			pr_err("copy_from_user failed cmd=%x size=%d\n",
-				cmd, _IOC_SIZE(cmd));
-			return -EFAULT;
-		}
+	if ((cmd & IOC_IN) &&
+	    (copy_from_user(data, (void __user *)arg, _IOC_SIZE(cmd)))) {
+		pr_err("copy_from_user failed cmd=%x size=%d\n",
+			cmd, _IOC_SIZE(cmd));
+		return -EFAULT;
 	}
 
 	switch (cmd) {
@@ -301,11 +324,12 @@ static long hab_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		ret = -ENOIOCTLCMD;
 	}
 
-	if (_IOC_SIZE(cmd) && (cmd & IOC_OUT))
-		if (copy_to_user((void __user *) arg, data, _IOC_SIZE(cmd))) {
-			pr_err("copy_to_user failed: cmd=%x\n", cmd);
-			ret = -EFAULT;
-		}
+	if ((ret != -ENOIOCTLCMD) &&
+	    (cmd & IOC_OUT) &&
+	    (copy_to_user((void __user *) arg, data, _IOC_SIZE(cmd)))) {
+		pr_err("copy_to_user failed: cmd=%x\n", cmd);
+		ret = -EFAULT;
+	}
 
 	return ret;
 }

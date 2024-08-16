@@ -1,7 +1,8 @@
+gh_virt_wdt.ko
+qcom_wdt_core.ko
 dcvs_fp.ko
 qcom-dcvs.ko
 debug_symbol.ko
-qcom_wdt_core.ko
 qcom_cpu_vendor_hooks.ko
 qcom_cpucp.ko
 iommu-logger.ko
@@ -17,6 +18,8 @@ qcom_iommu_util.ko
 qcom-dload-mode.ko
 minidump.ko
 qcom_dma_heaps.ko
+gh_msgq.ko
+gh_rm_drv.ko
 qcom-scm.ko
 mem_buf.ko
 mem_buf_dev.ko
@@ -30,6 +33,8 @@ qcom_rpmh.ko
 clk-qcom.ko
 clk-dummy.ko
 clk-rpmh.ko
+dcc_v2.ko
+memory_dump_v2.ko
 gcc-anorak.ko
 qcom-cpufreq-hw.ko
 dispcc0-anorak.ko
@@ -56,6 +61,8 @@ icc-debug.ko
 qnoc-anorak.ko
 qnoc-qos.ko
 proxy-consumer.ko
+cqhci.ko
+sdhci-msm.ko
 rpmh-regulator.ko
 qti-fixed-regulator.ko
 debug-regulator.ko
@@ -69,3 +76,7 @@ ufs_qcom.ko
 phy-qcom-ufs.ko
 spmi-pmic-arb.ko
 qti-regmap-debugfs.ko
+qcom-spmi-pmic.ko
+rtc-pm8xxx.ko
+nvmem_qcom-spmi-sdam.ko
+pmic-pon-log.ko
