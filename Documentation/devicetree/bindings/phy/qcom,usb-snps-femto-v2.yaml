@@ -17,6 +17,7 @@ properties:
     oneOf:
       - items:
           - enum:
+              - qcom,sa8255p-usb-hs-phy
               - qcom,sa8775p-usb-hs-phy
               - qcom,sc8280xp-usb-hs-phy
           - const: qcom,usb-snps-hs-5nm-phy
@@ -46,6 +47,15 @@ properties:
   clock-names:
     items:
       - const: ref
+
+  power-domains:
+    description: specifies phandles to PM domain provider nodes
+    maxItems: 2
+
+  power-domain-names:
+    items:
+      - const: usb_transfer
+      - const: usb_core
 
   resets:
     items:
@@ -152,12 +162,26 @@ required:
   - compatible
   - reg
   - "#phy-cells"
-  - clocks
-  - clock-names
-  - resets
-  - vdda-pll-supply
-  - vdda18-supply
-  - vdda33-supply
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - qcom,sa8255p-usb-hs-phy
+    then:
+      required:
+        - power-domains
+        - power-domain-names
+    else:
+      required:
+        - clocks
+        - clock-names
+        - resets
+        - vdda-pll-supply
+        - vdda18-supply
+        - vdda33-supply
 
 additionalProperties: false
 
@@ -178,5 +202,16 @@ examples:
         vdda-pll-supply = <&vdd_usb_hs_core>;
         vdda33-supply = <&vdda_usb_hs_3p1>;
         vdda18-supply = <&vdda_usb_hs_1p8>;
+    };
+
+  - |
+    phy@88e4000 {
+      compatible = "qcom,sa8255p-usb-hs-phy",
+                   "qcom,usb-snps-hs-5nm-phy";
+      reg = <0x088e4000 0x120>;
+      #phy-cells = <0>;
+
+      power-domains = <&scmi12_pd 0>, <&scmi12_pd 1>;
+      power-domain-names = "usb_transfer", "usb_core";
     };
 ...
