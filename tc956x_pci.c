@@ -4,7 +4,7 @@
  * tc956x_pci.c
  *
  * Copyright (C) 2011-2012  Vayavya Labs Pvt Ltd
- * Copyright (C) 2021 Toshiba Electronic Devices & Storage Corporation
+ * Copyright (C) 2024 Toshiba Electronic Devices & Storage Corporation
  *
  * This file has been derived from the STMicro and Synopsys Linux driver,
  * and developed or modified for TC956X.
@@ -182,6 +182,8 @@
  *  09 May 2023 : 1. Version update
  *                2. Module parameters to control SW reset (during link change) enabled by default for Port0.
  *  VERSION     : 01-00-59
+ *  20 Aug 2024 : 1. Version update 
+ *  VERSION     : 01-00-60
  */
 
 #include <linux/clk-provider.h>
@@ -250,7 +252,7 @@ unsigned int mac1_en_lp_pause_frame_cnt = DISABLE;
 
 unsigned int mac_power_save_at_link_down = DISABLE;
 
-static const struct tc956x_version tc956x_drv_version = {0, 1, 0, 0, 5, 9};
+static const struct tc956x_version tc956x_drv_version = {0, 1, 0, 0, 6, 0};
 
 static int tc956xmac_pm_usage_counter; /* Device Usage Counter */
 struct mutex tc956x_pm_suspend_lock; /* This mutex is shared between all available EMAC ports. */

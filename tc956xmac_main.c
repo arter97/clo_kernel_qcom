@@ -4,7 +4,7 @@
  * tc956xmac_main.c
  *
  * Copyright(C) 2007-2011 STMicroelectronics Ltd
- * Copyright (C) 2021 Toshiba Electronic Devices & Storage Corporation
+ * Copyright (C) 2024 Toshiba Electronic Devices & Storage Corporation
  *
  * This file has been derived from the STMicro Linux driver,
  * and developed or modified for TC956X.
@@ -138,8 +138,10 @@
  *  09 Nov 2022 : 1. Update of fix for configuring Rx Parser when EEE is enabled
  *  VERSION     : 01-00-57
  *  22 Dec 2022 : 1. Support for SW reset during link down.
-                  2. Module parameters introduced for the control of SW reset and by default SW reset is disabled.
+ *                2. Module parameters introduced for the control of SW reset and by default SW reset is disabled.
  *  VERSION     : 01-00-58
+ *  20 Aug 2024 : 1. SGMII 1Gbps XPCS autonegotiation enabled during link change
+ *  VERSION     : 01-00-60
  */
 
 #include <linux/clk.h>
@@ -3222,7 +3224,7 @@ static void tc956xmac_mac_an_restart(struct phylink_config *config)
 	if (priv->hw->xpcs) {
 		/*Enable XPCS Autoneg*/
 		if ((priv->plat->interface == PHY_INTERFACE_MODE_10GKR) || 
-			(priv->plat->interface == ENABLE_2500BASE_X_INTERFACE)) {
+			(priv->plat->port_interface == ENABLE_2500BASE_X_INTERFACE)) {
 			enable_en = false;
 			KPRINT_INFO("%s :Port %d AN Enable:%d", __func__, priv->port_num, enable_en);
 		} else if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
@@ -5661,7 +5663,7 @@ static int tc956xmac_hw_setup(struct net_device *dev, bool init_ptp)
 	if (priv->hw->xpcs) {
 		/*C37 AN enable*/
 		if ((priv->plat->interface == PHY_INTERFACE_MODE_10GKR) ||
-			(priv->plat->interface == ENABLE_2500BASE_X_INTERFACE))
+			(priv->plat->port_interface == ENABLE_2500BASE_X_INTERFACE))
 			enable_en = false;
 		else if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
 			if (priv->is_sgmii_2p5g == true)
@@ -12869,7 +12871,7 @@ void tc956xmac_link_change_set_power(struct tc956xmac_priv *priv, enum TC956X_PO
 
 			/*C37 AN enable*/
 			if ((priv->plat->interface == PHY_INTERFACE_MODE_10GKR) ||
-				(priv->plat->interface == ENABLE_2500BASE_X_INTERFACE))
+				(priv->plat->port_interface == ENABLE_2500BASE_X_INTERFACE))
 				enable_en = false;
 			else if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII) {
 				if (priv->is_sgmii_2p5g == true)

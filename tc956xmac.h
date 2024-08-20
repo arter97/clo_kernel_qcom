@@ -4,7 +4,7 @@
  * tc956xmac.h
  *
  * Copyright (C) 2007-2009  STMicroelectronics Ltd
- * Copyright (C) 2021 Toshiba Electronic Devices & Storage Corporation
+ * Copyright (C) 2024 Toshiba Electronic Devices & Storage Corporation
  *
  * This file has been derived from the STMicro Linux driver,
  * and developed or modified for TC956X.
@@ -172,6 +172,8 @@
  *  VERSION     : 01-00-58
  *  09 May 2023 : 1. Version update 
  *  VERSION     : 01-00-59
+ *  20 Aug 2024 : 1. Version update 
+ *  VERSION     : 01-00-60
  */
 
 #ifndef __TC956XMAC_H__
@@ -227,7 +229,7 @@
 #define IRQ_DEV_NAME(x)		(((x) == RM_PF0_ID) ? ("eth0") : ("eth1"))
 #define WOL_IRQ_DEV_NAME(x)	(((x) == RM_PF0_ID) ? ("eth0_wol") : ("eth1_wol"))
 
-#define DRV_MODULE_VERSION	"V_01-00-59"
+#define DRV_MODULE_VERSION	"V_01-00-60"
 #define TC956X_FW_MAX_SIZE	(64*1024)
 
 #define ATR_AXI4_SLV_BASE		0x0800
