@@ -26,6 +26,7 @@ properties:
           - qcom,msm8994-ufshc
           - qcom,msm8996-ufshc
           - qcom,msm8998-ufshc
+          - qcom,qcs8300-ufshc
           - qcom,sa8255p-ufshc
           - qcom,sa8775p-ufshc
           - qcom,sc7280-ufshc
@@ -116,6 +117,7 @@ allOf:
           contains:
             enum:
               - qcom,msm8998-ufshc
+              - qcom,qcs8300-ufshc
               - qcom,sa8775p-ufshc
               - qcom,sc7280-ufshc
               - qcom,sc8280xp-ufshc
