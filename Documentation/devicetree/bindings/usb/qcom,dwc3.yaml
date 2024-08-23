@@ -25,6 +25,7 @@ properties:
           - qcom,msm8998-dwc3
           - qcom,qcm2290-dwc3
           - qcom,qcs404-dwc3
+          - qcom,qcs8300-dwc3
           - qcom,sa8255p-dwc3
           - qcom,sa8775p-dwc3
           - qcom,sc7180-dwc3
@@ -177,6 +178,7 @@ allOf:
               - qcom,msm8996-dwc3
               - qcom,msm8998-dwc3
               - qcom,sa8775p-dwc3
+              - qcom,qcs8300-dwc3
               - qcom,sc7180-dwc3
               - qcom,sc7280-dwc3
               - qcom,sdm670-dwc3
@@ -473,6 +475,7 @@ allOf:
           contains:
             enum:
               - qcom,sa8775p-dwc3
+              - qcom,qcs8300-dwc3
     then:
       properties:
         interrupts:
