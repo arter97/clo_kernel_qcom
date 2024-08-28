@@ -655,10 +655,10 @@ static int aqcs109_config_init(struct phy_device *phydev)
 
 static void aqr113_get_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
 {
-	int val = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RSVD_VEND_PROV);
+	struct aqr107_priv *priv = phydev->priv;
 
 	wol->supported = WAKE_MAGIC | WAKE_PHY;
-	wol->wolopts = (val & MDIO_AN_RSVD_VEND_PROV_WOL_ENABLE) ? WAKE_PHY : 0;
+	wol->wolopts =  priv->wol;
 }
 
 static int aqr113_set_wol(struct phy_device *phydev, struct ethtool_wolinfo *wol)
