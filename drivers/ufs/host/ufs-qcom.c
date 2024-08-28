@@ -28,7 +28,7 @@
 #include <trace/hooks/ufshcd.h>
 #include <linux/ipc_logging.h>
 #include <soc/qcom/minidump.h>
-#ifdef CONFIG_SCHED_WALT
+#if IS_ENABLED(CONFIG_SCHED_WALT)
 #include <linux/sched/walt.h>
 #endif
 #include <linux/nvmem-consumer.h>
@@ -85,6 +85,12 @@
 enum {
 	UFS_QCOM_CMD_SEND,
 	UFS_QCOM_CMD_COMPL,
+};
+
+enum {
+	UFS_QCOM_SYSFS_NONE,
+	UFS_QCOM_SYSFS_S2R,
+	UFS_QCOM_SYSFS_DEEPSLEEP,
 };
 
 static char android_boot_dev[ANDROID_BOOT_DEV_MAX];
@@ -1667,7 +1673,7 @@ static void ufs_qcom_toggle_pri_affinity(struct ufs_hba *hba, bool on)
 	if (on && atomic_read(&host->therm_mitigation))
 		return;
 
-#ifdef CONFIG_SCHED_WALT
+#if IS_ENABLED(CONFIG_SCHED_WALT)
 	if (on)
 		sched_set_boost(STORAGE_BOOST);
 	else
@@ -2516,6 +2522,8 @@ static void ufshcd_parse_pm_levels(struct ufs_hba *hba)
 		ufshcd_is_valid_pm_lvl(spm_lvl))
 		hba->spm_lvl = spm_lvl;
 	host->is_dt_pm_level_read = true;
+
+	host->spm_lvl_default = hba->spm_lvl;
 }
 
 static void ufs_qcom_override_pa_tx_hsg1_sync_len(struct ufs_hba *hba)
@@ -3555,7 +3563,7 @@ static void ufs_qcom_register_minidump(uintptr_t vaddr, u64 size,
 	if (!msm_minidump_enabled())
 		return;
 
-	scnprintf(md_entry.name, sizeof(md_entry.name), "%s_%d",
+	scnprintf(md_entry.name, sizeof(md_entry.name), "%s%d",
 			buf_name, id);
 	md_entry.virt_addr = vaddr;
 	md_entry.phys_addr = virt_to_phys((void *)vaddr);
@@ -5569,6 +5577,59 @@ static ssize_t irq_affinity_support_show(struct device *dev,
 
 static DEVICE_ATTR_RW(irq_affinity_support);
 
+static ssize_t ufs_pm_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret = -1;
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+
+	switch (host->ufs_pm_mode) {
+	case 0:
+		ret = scnprintf(buf, 6, "NONE\n");
+		break;
+	case 1:
+		ret = scnprintf(buf, 5, "S2R\n");
+		break;
+	case 2:
+		ret = scnprintf(buf, 12, "DEEPSLEEP\n");
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
+static ssize_t ufs_pm_mode_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	char kbuff[12] = {0};
+
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+
+	if (!buf)
+		return -EINVAL;
+
+	strscpy(kbuff, buf, 11);
+
+	if (!strncasecmp(kbuff, "NONE", 4))
+		host->ufs_pm_mode = 0;
+	else if (!strncasecmp(kbuff, "S2R", 3))
+		host->ufs_pm_mode = 1;
+	else if (!strncasecmp(kbuff, "DEEPSLEEP", 9))
+		host->ufs_pm_mode = 2;
+	else
+		dev_err(hba->dev, "Invalid entry for ufs_pm_mode\n");
+
+	return count;
+}
+
+
+static DEVICE_ATTR_RW(ufs_pm_mode);
+
 static struct attribute *ufs_qcom_sysfs_attrs[] = {
 	&dev_attr_err_state.attr,
 	&dev_attr_power_mode.attr,
@@ -5580,6 +5641,7 @@ static struct attribute *ufs_qcom_sysfs_attrs[] = {
 	&dev_attr_hibern8_count.attr,
 	&dev_attr_ber_th_exceeded.attr,
 	&dev_attr_irq_affinity_support.attr,
+	&dev_attr_ufs_pm_mode.attr,
 	NULL
 };
 
@@ -6034,10 +6096,40 @@ static int ufs_qcom_system_resume(struct device *dev)
 #ifdef CONFIG_PM_SLEEP
 static int ufs_qcom_suspend_prepare(struct device *dev)
 {
+	struct ufs_hba *hba;
+	struct ufs_qcom_host *host;
+
+
 	if (!is_bootdevice_ufs) {
 		dev_info(dev, "UFS is not boot dev.\n");
 		return 0;
 	}
+
+	hba = dev_get_drvdata(dev);
+	host = ufshcd_get_variant(hba);
+
+	/* For deep sleep, set spm level to lvl 5 because all
+	 * regulators is turned off in DS. For other senerios
+	 * like s2idle, retain the default spm level.
+	 */
+	switch (host->ufs_pm_mode) {
+	case UFS_QCOM_SYSFS_NONE:
+		if (pm_suspend_target_state == PM_SUSPEND_MEM)
+			hba->spm_lvl = UFS_PM_LVL_5;
+		else
+			hba->spm_lvl = host->spm_lvl_default;
+		break;
+	case UFS_QCOM_SYSFS_S2R:
+		hba->spm_lvl = host->spm_lvl_default;
+		break;
+	case UFS_QCOM_SYSFS_DEEPSLEEP:
+		hba->spm_lvl = UFS_PM_LVL_5;
+		break;
+	default:
+		break;
+	}
+
+	dev_info(dev, "spm level is set to %d\n", hba->spm_lvl);
 
 	return ufshcd_suspend_prepare(dev);
 }
@@ -6052,6 +6144,32 @@ static void ufs_qcom_resume_complete(struct device *dev)
 	return ufshcd_resume_complete(dev);
 }
 
+static void ufs_qcom_remove_s2r_cap(struct device *dev)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	hba->caps &= ~(UFSHCD_CAP_CLK_GATING |
+		UFSHCD_CAP_HIBERN8_WITH_CLK_GATING |
+		UFSHCD_CAP_CLK_SCALING |
+		UFSHCD_CAP_AUTO_BKOPS_SUSPEND |
+		UFSHCD_CAP_AGGR_POWER_COLLAPSE |
+		UFSHCD_CAP_WB_WITH_CLK_SCALING);
+
+}
+
+static void ufs_qcom_set_s2r_cap(struct device *dev)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	hba->caps |= UFSHCD_CAP_CLK_GATING |
+		UFSHCD_CAP_HIBERN8_WITH_CLK_GATING |
+		UFSHCD_CAP_CLK_SCALING |
+		UFSHCD_CAP_AUTO_BKOPS_SUSPEND |
+		UFSHCD_CAP_AGGR_POWER_COLLAPSE |
+		UFSHCD_CAP_WB_WITH_CLK_SCALING;
+
+}
+
 static int ufs_qcom_system_freeze(struct device *dev)
 {
 	if (!is_bootdevice_ufs) {
@@ -6059,6 +6177,7 @@ static int ufs_qcom_system_freeze(struct device *dev)
 		return 0;
 	}
 
+	ufs_qcom_remove_s2r_cap(dev);
 	return ufshcd_system_freeze(dev);
 }
 
@@ -6068,7 +6187,7 @@ static int ufs_qcom_system_restore(struct device *dev)
 		dev_info(dev, "UFS is not boot dev.\n");
 		return 0;
 	}
-
+	ufs_qcom_set_s2r_cap(dev);
 	return ufshcd_system_restore(dev);
 }
 
