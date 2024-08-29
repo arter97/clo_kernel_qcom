@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -31,6 +31,7 @@
 #include <linux/types.h>
 #include <soc/qcom/rpm-smd.h>
 #include <soc/qcom/mpm.h>
+#include <linux/delay.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_rpm_smd.h>
@@ -110,6 +111,7 @@ struct qcom_smd_rpm {
 	struct mutex lock;
 	int ack_status;
 	struct notifier_block genpd_nb;
+	bool use_rpmsg_no_sleep;
 };
 
 struct qcom_smd_rpm *rpm;
@@ -698,6 +700,23 @@ static struct msm_rpm_driver_data msm_rpm_data = {
 	.smd_open = COMPLETION_INITIALIZER(msm_rpm_data.smd_open),
 };
 
+static int trysend_count = 20;
+static int msm_rpm_trysend_smd_buffer(char *buf, uint32_t size)
+{
+	int ret;
+	int count = 0;
+
+	do {
+		ret = rpmsg_trysend(rpm->rpm_channel, buf, size);
+		if (!ret)
+			break;
+		udelay(10);
+		count++;
+	} while (count < trysend_count);
+
+	return ret;
+}
+
 static int msm_rpm_flush_requests(void)
 {
 	struct rb_node *t;
@@ -715,7 +734,10 @@ static int msm_rpm_flush_requests(void)
 
 		set_msg_id(s->buf, msm_rpm_get_next_msg_id());
 
-		ret = rpmsg_send(rpm->rpm_channel, s->buf, get_buf_len(s->buf));
+		if (rpm->use_rpmsg_no_sleep)
+			ret = msm_rpm_trysend_smd_buffer(s->buf, get_buf_len(s->buf));
+		else
+			ret = rpmsg_send(rpm->rpm_channel, s->buf, get_buf_len(s->buf));
 
 		WARN_ON(ret != 0);
 		trace_rpm_smd_send_sleep_set(get_msg_id(s->buf), type, id);
@@ -733,10 +755,15 @@ static int msm_rpm_flush_requests(void)
 		if (count >= MAX_WAIT_ON_ACK) {
 			pr_err("Error: more than %d requests are buffered\n",
 							MAX_WAIT_ON_ACK);
-			return -ENOSPC;
+			if (rpm->use_rpmsg_no_sleep) {
+				ret = 0;
+				break;
+			} else {
+				ret = -ENOSPC;
+			}
 		}
 	}
-	return 0;
+	return ret;
 }
 
 static int msm_rpm_add_kvp_data_common(struct msm_rpm_request *handle,
@@ -1636,6 +1663,11 @@ static int qcom_smd_rpm_probe(struct rpmsg_device *rpdev)
 			goto fail;
 		}
 	}
+
+	key = "qcom,use-rpmsg-no-sleep";
+	rpm->use_rpmsg_no_sleep = of_property_read_bool(p, key);
+	if (rpm->use_rpmsg_no_sleep)
+		pr_info("RPM using non sleep send method\n");
 
 	mutex_init(&rpm->lock);
 	init_completion(&rpm->ack);
