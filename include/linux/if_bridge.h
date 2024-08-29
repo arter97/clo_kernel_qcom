@@ -113,7 +113,7 @@ static inline bool br_multicast_router(const struct net_device *dev)
 extern struct net_device *br_port_dev_get(struct net_device *dev,
 						unsigned char *addr);
 #else
-extern struct net_device *br_port_dev_get(struct net_device *dev,
+static inline struct net_device *br_port_dev_get(struct net_device *dev,
 						unsigned char *addr)
 {
 	return NULL;

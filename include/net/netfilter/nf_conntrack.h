@@ -119,7 +119,11 @@ struct nf_conn {
 #ifdef CONFIG_NF_CONNTRACK_SECMARK
 	u_int32_t secmark;
 #endif
+
+#if IS_ENABLED(CONFIG_ENABLE_SFE)
 	void *sfe_entry;
+#endif
+
 	/* Extensions */
 	struct nf_ct_ext *ext;
 

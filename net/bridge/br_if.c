@@ -774,8 +774,10 @@ bool br_port_flag_is_set(const struct net_device *dev, unsigned long flag)
 	return p->flags & flag;
 }
 EXPORT_SYMBOL_GPL(br_port_flag_is_set);
+
 #ifdef CONFIG_ENABLE_SFE
-/* br_port_dev_get()
+/**
+ * br_port_dev_get()
  * Using the given addr, identify the port to which it is reachable,
  * returing a reference to the net device associated with that port.
  *
@@ -804,5 +806,5 @@ struct net_device *br_port_dev_get(struct net_device *dev, unsigned char *addr)
 	rcu_read_unlock();
 	return netdev;
 }
-EXPORT_SYMBOL(br_port_dev_get);
+EXPORT_SYMBOL_GPL(br_port_dev_get);
 #endif
