@@ -13,8 +13,9 @@
 
 / {
 	model = "Qualcomm SA8775P Ride";
-	compatible = "qcom,sa8775p-ride", "qcom,sa8775p";
-	qcom,msm-id = <533 0x10000>, <534 0x10000>, <534 0x20000>;
+	compatible = "qcom,sa8775p-ride", "qcom,qcs9100", "qcom,sa8775p";
+	qcom,msm-id = <533 0x10000>, <534 0x10000>, <534 0x20000>,
+		      <667 0x10000>, <667 0x20000>;
 	qcom,board-id = <0x19 0>, <0x25 1>;
 
 	aliases {
@@ -536,6 +537,11 @@
 			  "CAM_DES3_EN",
 			  "UEFI",
 			  "ANALOG_PON_OPT";
+};
+
+&pmm8654au_0_pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
+	status = "okay";
 };
 
 &pmm8654au_1_gpios {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <net/mac80211.h>
@@ -1233,14 +1233,7 @@ static int ath11k_mac_vif_setup_ps(struct ath11k_vif *arvif)
 
 	enable_ps = arvif->ps;
 
-	if (!arvif->is_started) {
-		/* mac80211 can update vif powersave state while disconnected.
-		 * Firmware doesn't behave nicely and consumes more power than
-		 * necessary if PS is disabled on a non-started vdev. Hence
-		 * force-enable PS for non-running vdevs.
-		 */
-		psmode = WMI_STA_PS_MODE_ENABLED;
-	} else if (enable_ps) {
+	if (enable_ps) {
 		psmode = WMI_STA_PS_MODE_ENABLED;
 		param = WMI_STA_PS_PARAM_INACTIVITY_TIME;
 
@@ -9281,19 +9274,50 @@ static int ath11k_mac_setup_channels_rates(struct ath11k *ar,
 	return 0;
 }
 
+static void ath11k_mac_setup_mac_address_list(struct ath11k *ar)
+{
+	struct mac_address *addresses;
+	u16 n_addresses;
+	int i;
+
+	if (!ar->ab->hw_params.support_dual_stations)
+		return;
+
+	n_addresses = ar->ab->hw_params.num_vdevs;
+	addresses = kcalloc(n_addresses, sizeof(*addresses), GFP_KERNEL);
+	if (!addresses)
+		return;
+
+	memcpy(addresses[0].addr, ar->mac_addr, ETH_ALEN);
+	for (i = 1; i < n_addresses; i++) {
+		memcpy(addresses[i].addr, ar->mac_addr, ETH_ALEN);
+		/* set Local Administered Address bit */
+		addresses[i].addr[0] |= 0x2;
+
+		addresses[i].addr[0] += (i - 1) << 4;
+	}
+
+	ar->hw->wiphy->addresses = addresses;
+	ar->hw->wiphy->n_addresses = n_addresses;
+}
+
 static int ath11k_mac_setup_iface_combinations(struct ath11k *ar)
 {
 	struct ath11k_base *ab = ar->ab;
 	struct ieee80211_iface_combination *combinations;
 	struct ieee80211_iface_limit *limits;
-	int n_limits;
+	int n_limits, n_combos;
 
-	combinations = kzalloc(sizeof(*combinations), GFP_KERNEL);
+	if (ab->hw_params.support_dual_stations)
+		n_combos = 2;
+	else
+		n_combos = 1;
+
+	combinations = kcalloc(n_combos, sizeof(*combinations), GFP_KERNEL);
 	if (!combinations)
 		return -ENOMEM;
 
 	n_limits = 2;
-
 	limits = kcalloc(n_limits, sizeof(*limits), GFP_KERNEL);
 	if (!limits) {
 		kfree(combinations);
@@ -9302,20 +9326,18 @@ static int ath11k_mac_setup_iface_combinations(struct ath11k *ar)
 
 	limits[0].max = 1;
 	limits[0].types |= BIT(NL80211_IFTYPE_STATION);
-
 	limits[1].max = 16;
 	limits[1].types |= BIT(NL80211_IFTYPE_AP);
-
 	if (IS_ENABLED(CONFIG_MAC80211_MESH) &&
 	    ab->hw_params.interface_modes & BIT(NL80211_IFTYPE_MESH_POINT))
 		limits[1].types |= BIT(NL80211_IFTYPE_MESH_POINT);
 
 	combinations[0].limits = limits;
 	combinations[0].n_limits = n_limits;
-	combinations[0].max_interfaces = 16;
-	combinations[0].num_different_channels = 1;
 	combinations[0].beacon_int_infra_match = true;
 	combinations[0].beacon_int_min_gcd = 100;
+	combinations[0].max_interfaces = 16;
+	combinations[0].num_different_channels = 1;
 	combinations[0].radar_detect_widths = BIT(NL80211_CHAN_WIDTH_20_NOHT) |
 						BIT(NL80211_CHAN_WIDTH_20) |
 						BIT(NL80211_CHAN_WIDTH_40) |
@@ -9323,8 +9345,19 @@ static int ath11k_mac_setup_iface_combinations(struct ath11k *ar)
 						BIT(NL80211_CHAN_WIDTH_80P80) |
 						BIT(NL80211_CHAN_WIDTH_160);
 
+	if (ab->hw_params.support_dual_stations) {
+		limits[0].max = 2;
+
+		combinations[1].limits = limits;
+		combinations[1].n_limits = n_limits;
+		combinations[1].beacon_int_infra_match = true;
+		combinations[1].beacon_int_min_gcd = 100;
+		combinations[1].max_interfaces = ab->hw_params.num_vdevs;
+		combinations[1].num_different_channels = 2;
+	}
+
 	ar->hw->wiphy->iface_combinations = combinations;
-	ar->hw->wiphy->n_iface_combinations = 1;
+	ar->hw->wiphy->n_iface_combinations = n_combos;
 
 	return 0;
 }
@@ -9386,6 +9419,8 @@ static void __ath11k_mac_unregister(struct ath11k *ar)
 	kfree(ar->hw->wiphy->iface_combinations[0].limits);
 	kfree(ar->hw->wiphy->iface_combinations);
 
+	kfree(ar->hw->wiphy->addresses);
+
 	SET_IEEE80211_DEV(ar->hw, NULL);
 }
 
@@ -9428,6 +9463,7 @@ static int __ath11k_mac_register(struct ath11k *ar)
 	ath11k_pdev_caps_update(ar);
 
 	SET_IEEE80211_PERM_ADDR(ar->hw, ar->mac_addr);
+	ath11k_mac_setup_mac_address_list(ar);
 
 	SET_IEEE80211_DEV(ar->hw, ab->dev);
 
