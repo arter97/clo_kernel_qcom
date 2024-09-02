@@ -1368,6 +1368,8 @@ static struct iommu_device *arm_smmu_probe_device(struct device *dev)
 			goto out_free;
 	} else if (fwspec && fwspec->ops == &arm_smmu_ops) {
 		smmu = arm_smmu_get_by_fwnode(fwspec->iommu_fwnode);
+		if (!smmu)
+			return ERR_PTR(-EPROBE_DEFER);
 	} else {
 		return ERR_PTR(-ENODEV);
 	}
