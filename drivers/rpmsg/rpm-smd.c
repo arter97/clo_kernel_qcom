@@ -755,12 +755,11 @@ static int msm_rpm_flush_requests(void)
 		if (count >= MAX_WAIT_ON_ACK) {
 			pr_err("Error: more than %d requests are buffered\n",
 							MAX_WAIT_ON_ACK);
-			if (rpm->use_rpmsg_no_sleep) {
+			if (rpm->use_rpmsg_no_sleep)
 				ret = 0;
-				break;
-			} else {
+			else
 				ret = -ENOSPC;
-			}
+			break;
 		}
 	}
 	return ret;
