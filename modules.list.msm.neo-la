@@ -51,10 +51,10 @@ msm_rtb.ko
 mem_buf.ko
 mem_buf_dev.ko
 pinctrl-msm.ko
+pinctrl-neo.ko
 phy-generic.ko
 phy-qcom-emu.ko
 qcom_dma_heaps.ko
-dwc3-msm.ko
 sdhci-msm-scaling.ko
 cqhci.ko
 qcom-vadc-common.ko
@@ -76,7 +76,8 @@ dispcc-neo.ko
 secure_buffer.ko
 qcom-cpufreq-hw.ko
 sched-walt-debug.ko
-qcom-i2c-pmici.ko
+tcsrcc-neo.ko
+qcom-i2c-pmic.ko
 qcom-spmi-pmic.ko
 qcom-reboot-reason.ko
 qti-regmap-debugfs.ko
@@ -88,3 +89,9 @@ crypto-qti-common.ko
 crypto-qti-hwkm.ko
 hwkm.ko
 tmecom-intf.ko
+qti-fixed-regulator.ko
+qcom_pm8008-regulator.ko
+rpmh-regulator.ko
+debug-regulator.ko
+qcom-pdc.ko
+gdsc-regulator.ko
