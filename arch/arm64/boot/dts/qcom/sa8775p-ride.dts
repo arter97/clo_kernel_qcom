@@ -969,6 +969,7 @@
 };
 
 &usb_1_dwc3 {
+	snps,dwc3_guctl_resbwhseps_quirk;
 	dr_mode = "host";
 };
 
@@ -995,6 +996,7 @@
 };
 
 &usb_2_dwc3 {
+	snps,dwc3_guctl_resbwhseps_quirk;
 	dr_mode = "otg";
 };
 
