@@ -7,8 +7,11 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/spmi/spmi.h>
 
 #include "qcs8300.dtsi"
+#include "qcs8300-pmics.dtsi"
+
 / {
 	model = "Qualcomm Technologies, Inc. QCS8300 Ride";
 	compatible = "qcom,qcs8300-ride", "qcom,qcs8275", "qcom,qcs8300";
@@ -18,10 +21,29 @@
 
 	aliases {
 		serial0 = &uart7;
+		serial1 = &uart2;
 	};
 
 	chosen {
 		stdout-path = "serial0:115200n8";
+	};
+
+	/* PWR_CTR2_VDD_1P8 supply */
+	vreg_conn_1p8: vreg_conn_1p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_conn_1p8";
+		startup-delay-us = <4000>;
+		enable-active-high;
+		gpio = <&pmm8650au_1_gpios 4 GPIO_ACTIVE_HIGH>;
+	};
+
+	/* PWR_CTR1_VDD_PA supply */
+	vreg_conn_pa: vreg_conn_pa {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_conn_pa";
+		startup-delay-us = <4000>;
+		enable-active-high;
+		gpio = <&pmm8650au_1_gpios 6 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -287,7 +309,61 @@
 	};
 };
 
+&qupv3_id_0 {
+	status = "okay";
+};
+
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dp0 {
+	status = "okay";
+};
+
+&mdss_dp_out {
+	data-lanes = <0 1 2 3>;
+	link-frequencies = /bits/ 64 <1620000000 2700000000 5400000000 8100000000>;
+};
+
+&mdss_edp_phy {
+	status = "okay";
+};
+
+&spmi_bus {
+	pmm8654au_2: pmic@2 {
+		compatible = "qcom,pmm8654au", "qcom,spmi-pmic";
+		reg = <2 SPMI_USID>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		pmm8654au_2_gpios: gpio@8800 {
+			compatible = "qcom,pmm8654au-gpio", "qcom,spmi-gpio";
+			reg = <0x8800>;
+			gpio-controller;
+			gpio-ranges = <&pmm8654au_2_gpios 0 0 12>;
+			#gpio-cells = <2>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+	};
+};
+
 &tlmm {
+	bt_en_state: bt-en-state {
+		pins = "gpio55";
+		function = "normal";
+		output-low;
+		bias-pull-down;
+	};
+
+	dp_hot_plug_det: dp-hot-plug-det-state {
+		pins = "gpio94";
+		function = "edp0_hot";
+		bias-disable;
+	};
+
 	ethernet0_default: ethernet0-default-state {
 		ethernet0_mdc: ethernet0-mdc-pins {
 			pins = "gpio5";
@@ -305,13 +381,47 @@
 	};
 };
 
-&qupv3_id_0 {
+&remoteproc_adsp {
+	firmware-name = "qcom/qcs8300/adsp.mbn";
+	status = "okay";
+};
+
+&remoteproc_cdsp {
+	firmware-name = "qcom/qcs8300/cdsp0.mbn";
+	status = "okay";
+};
+
+&remoteproc_gpdsp {
+	firmware-name = "qcom/qcs8300/gpdsp0.mbn";
 	status = "okay";
 };
 
 &serdes0 {
 	phy-supply = <&vreg_l5a>;
 	status = "okay";
+};
+
+/* HS UART Instance */
+&uart2 {
+	status = "okay";
+	bluetooth: bluetooth {
+		compatible = "qcom,wcn6855-bt";
+		pinctrl-names = "default";
+		pinctrl-0 = <&bt_en_state>;
+		enable-gpios = <&tlmm 55 GPIO_ACTIVE_HIGH>; /* BT_EN */
+
+		vddio-supply       = <&vreg_conn_pa>;         /* bt-vdd-ctrl1-supply */
+		vddbtcxmx-supply   = <&vreg_conn_1p8>;        /* bt-vdd-ctrl2-supply */
+		vddrfacmn-supply   = <&vreg_conn_1p8>;             /* bt-vdd-aon-supply, dummy */
+		vddrfa0p8-supply   = <&vreg_conn_1p8>;             /* bt-vdd-aon-supply, dummy */
+		vddrfa1p7-supply   = <&vreg_conn_1p8>;             /* bt-vdd-aon-supply, dummy */
+		vddrfa1p2-supply   = <&vreg_conn_1p8>;             /* bt-vdd-aon-supply, dummy */
+		//vddrfacmn-supply   = <&vreg_l2c>;             /* bt-vdd-aon-supply */
+		//vddrfa0p8-supply   = <&vreg_l2c>;             /* bt-vdd-rfa1-supply */
+		//vddrfa1p7-supply   = <&vreg_s5a>;             /* bt-vdd-rfa2-supply */
+		//vddrfa1p2-supply   = <&vreg_l6e>;             /* bt-vdd-rfa3-supply */
+		max-speed = <3200000>;
+	};
 };
 
 &uart7 {
@@ -331,4 +441,54 @@
 	vdda-phy-supply = <&vreg_l4a>;
 	vdda-pll-supply = <&vreg_l5a>;
 	status = "okay";
+};
+
+&pmm8654au_2_gpios {
+	usb1_en_state: usb1-en-state {
+		pins = "gpio7";
+		function = "normal";
+		output-high;
+		power-source = <0>;
+	};
+};
+
+&usb_qmpphy {
+	vdda-phy-supply = <&vreg_l7a>;
+	vdda-pll-supply = <&vreg_l5a>;
+
+	status = "okay";
+};
+
+&usb_1_hsphy {
+	vdda-pll-supply = <&vreg_l7a>;
+	vdda18-supply = <&vreg_l7c>;
+	vdda33-supply = <&vreg_l9a>;
+
+	status = "okay";
+};
+
+&usb_2_hsphy {
+	vdda-pll-supply = <&vreg_l7a>;
+	vdda18-supply = <&vreg_l7c>;
+	vdda33-supply = <&vreg_l9a>;
+
+	status = "okay";
+};
+
+&usb_1 {
+	status = "okay";
+};
+
+&usb_1_dwc3 {
+	dr_mode = "peripheral";
+};
+
+&usb_2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&usb1_en_state>;
+	status = "okay";
+};
+
+&usb_2_dwc3 {
+	dr_mode = "host";
 };

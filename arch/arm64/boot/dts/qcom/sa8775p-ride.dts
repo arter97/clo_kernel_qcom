@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
  * Copyright (c) 2023, Linaro Limited
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /dts-v1/;
@@ -510,6 +511,26 @@
 	};
 };
 
+&eud {
+	status = "okay";
+};
+
+&gpi_dma0 {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
+&gpi_dma2 {
+	status = "okay";
+};
+
+&gpi_dma3 {
+	status = "okay";
+};
+
 &i2c11 {
 	clock-frequency = <400000>;
 	pinctrl-0 = <&qup_i2c11_default>;
@@ -521,6 +542,23 @@
 	clock-frequency = <400000>;
 	pinctrl-0 = <&qup_i2c18_default>;
 	pinctrl-names = "default";
+	status = "okay";
+};
+
+&mdss0 {
+	status = "okay";
+};
+
+&mdss0_dp0 {
+	status = "okay";
+};
+
+&mdss0_dp0_out {
+	data-lanes = <0 1 2 3>;
+	link-frequencies = /bits/ 64 <1620000000 2700000000 5400000000 8100000000>;
+};
+
+&mdss0_edp_phy {
 	status = "okay";
 };
 
@@ -615,11 +653,19 @@
 			  "GNSS_BOOT_MODE";
 };
 
+&qupv3_id_0 {
+	status = "okay";
+};
+
 &qupv3_id_1 {
 	status = "okay";
 };
 
 &qupv3_id_2 {
+	status = "okay";
+};
+
+&qupv3_id_3 {
 	status = "okay";
 };
 
@@ -641,6 +687,12 @@
 	pinctrl-0 = <&qup_spi16_default>;
 	pinctrl-names = "default";
 	status = "okay";
+	spidev@0 {
+		compatible = "rohm,dh2228fv";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+		spi-cpha;
+	};
 };
 
 &llcc {
@@ -648,6 +700,12 @@
 };
 
 &tlmm {
+	dp_hot_plug_det: dp-hot-plug-det-state {
+		pins = "gpio101";
+		function = "edp0_hot";
+		bias-disable;
+	};
+
 	ethernet0_default: ethernet0-default-state {
 		ethernet0_mdc: ethernet0-mdc-pins {
 			pins = "gpio8";
@@ -911,6 +969,7 @@
 };
 
 &usb_1_dwc3 {
+	snps,dwc3_guctl_resbwhseps_quirk;
 	dr_mode = "host";
 };
 
@@ -937,7 +996,8 @@
 };
 
 &usb_2_dwc3 {
-	dr_mode = "host";
+	snps,dwc3_guctl_resbwhseps_quirk;
+	dr_mode = "otg";
 };
 
 &usb_2_hsphy {

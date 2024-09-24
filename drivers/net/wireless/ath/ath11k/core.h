@@ -356,6 +356,7 @@ struct ath11k_vif {
 	u8 bssid[ETH_ALEN];
 	struct cfg80211_bitrate_mask bitrate_mask;
 	struct delayed_work connection_loss_work;
+	struct work_struct bcn_tx_work;
 	int num_legacy_stations;
 	int rtscts_prot_mode;
 	int txpower;
@@ -1228,6 +1229,11 @@ static inline struct ath11k_skb_rxcb *ATH11K_SKB_RXCB(struct sk_buff *skb)
 static inline struct ath11k_vif *ath11k_vif_to_arvif(struct ieee80211_vif *vif)
 {
 	return (struct ath11k_vif *)vif->drv_priv;
+}
+
+static inline struct ath11k_sta *ath11k_sta_to_arsta(struct ieee80211_sta *sta)
+{
+	return (struct ath11k_sta *)sta->drv_priv;
 }
 
 static inline struct ath11k *ath11k_ab_to_ar(struct ath11k_base *ab,

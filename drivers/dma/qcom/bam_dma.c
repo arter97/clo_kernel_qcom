@@ -77,7 +77,7 @@ struct bam_async_desc {
 	struct list_head desc_node;
 	enum dma_transfer_direction dir;
 	size_t length;
-	struct bam_desc_hw desc[];
+	struct bam_desc_hw desc[] __counted_by(num_desc);
 };
 
 enum bam_reg {
@@ -527,7 +527,7 @@ static void bam_chan_init_hw(struct bam_chan *bchan,
 	 */
 	writel_relaxed(ALIGN(bchan->fifo_phys, sizeof(struct bam_desc_hw)),
 			bam_addr(bdev, bchan->id, BAM_P_DESC_FIFO_ADDR));
-	writel_relaxed(BAM_DESC_FIFO_SIZE,
+	writel_relaxed(BAM_FIFO_SIZE,
 		       bam_addr(bdev, bchan->id, BAM_P_FIFO_SIZES));
 
 	/* enable the per pipe interrupts, enable EOT, ERR, and INT irqs */
@@ -1464,7 +1464,7 @@ err_disable_clk:
 	return ret;
 }
 
-static int bam_dma_remove(struct platform_device *pdev)
+static void bam_dma_remove(struct platform_device *pdev)
 {
 	struct bam_device *bdev = platform_get_drvdata(pdev);
 	u32 i;
@@ -1494,8 +1494,6 @@ static int bam_dma_remove(struct platform_device *pdev)
 	tasklet_kill(&bdev->task);
 
 	clk_disable_unprepare(bdev->bamclk);
-
-	return 0;
 }
 
 static int __maybe_unused bam_dma_runtime_suspend(struct device *dev)
@@ -1553,7 +1551,7 @@ static const struct dev_pm_ops bam_dma_pm_ops = {
 
 static struct platform_driver bam_dma_driver = {
 	.probe = bam_dma_probe,
-	.remove = bam_dma_remove,
+	.remove_new = bam_dma_remove,
 	.driver = {
 		.name = "bam-dma-engine",
 		.pm = &bam_dma_pm_ops,

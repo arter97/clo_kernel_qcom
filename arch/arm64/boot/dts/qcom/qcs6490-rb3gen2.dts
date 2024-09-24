@@ -988,7 +988,7 @@
 	status = "okay";
 	/delete-property/interrupts;
 	interrupts-extended = <&intc GIC_SPI 608 IRQ_TYPE_LEVEL_HIGH>,
-				<&tlmm 31 IRQ_TYPE_LEVEL_HIGH>;
+				<&tlmm 31 IRQ_TYPE_EDGE_FALLING>;
 	pinctrl-names = "default", "sleep";
 	pinctrl-1 = <&qup_uart7_sleep_cts>, <&qup_uart7_sleep_rts>,
 			<&qup_uart7_sleep_tx>, <&qup_uart7_sleep_rx>;
