@@ -143,6 +143,7 @@ static void stmmac_flush_tx_descriptors(struct stmmac_priv *priv, int queue);
 static void stmmac_set_dma_operation_mode(struct stmmac_priv *priv, u32 txmode,
 					  u32 rxmode, u32 chan);
 
+static void stmmac_start_all_dma(struct stmmac_priv *priv);
 #ifdef CONFIG_DEBUG_FS
 static const struct net_device_ops stmmac_netdev_ops;
 static void stmmac_init_fs(struct net_device *dev);
@@ -1232,6 +1233,8 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 		pr_info("M - Ethernet is Ready.Link is UP\n");
 		priv->boot_kpi = true;
 	}
+
+	stmmac_start_all_dma(priv);
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -1819,6 +1822,89 @@ static struct xsk_buff_pool *stmmac_get_xsk_pool(struct stmmac_priv *priv, u32 q
 		return NULL;
 
 	return xsk_get_pool_from_qid(priv->dev, queue);
+}
+
+static void stmmac_reinit_rx_buffers(struct stmmac_priv *priv, struct stmmac_dma_conf *dma_conf)
+{
+	u32 rx_count = priv->plat->rx_queues_to_use;
+	u32 queue;
+	int i;
+
+	for (queue = 0; queue < rx_count; queue++) {
+		struct stmmac_rx_queue *rx_q = &dma_conf->rx_queue[queue];
+
+		for (i = 0; i < dma_conf->dma_rx_size; i++) {
+			struct stmmac_rx_buffer *buf = &rx_q->buf_pool[i];
+
+			if (buf->page) {
+				page_pool_recycle_direct(rx_q->page_pool, buf->page);
+				buf->page = NULL;
+			}
+
+			if (priv->sph && buf->sec_page) {
+				page_pool_recycle_direct(rx_q->page_pool, buf->sec_page);
+				buf->sec_page = NULL;
+			}
+		}
+	}
+
+	for (queue = 0; queue < rx_count; queue++) {
+		struct stmmac_rx_queue *rx_q = &dma_conf->rx_queue[queue];
+
+		for (i = 0; i < dma_conf->dma_rx_size; i++) {
+			struct stmmac_rx_buffer *buf = &rx_q->buf_pool[i];
+			struct dma_desc *p;
+
+			if (priv->extend_desc)
+				p = &((rx_q->dma_erx + i)->basic);
+			else
+				p = rx_q->dma_rx + i;
+
+			if (!buf->page) {
+				buf->page = page_pool_dev_alloc_pages(rx_q->page_pool);
+				if (!buf->page)
+					goto err_reinit_rx_buffers;
+
+				buf->addr = page_pool_get_dma_addr(buf->page);
+				if(!buf->addr) {
+					pr_err("buf->addr is NULL");
+					goto err_reinit_rx_buffers;
+				}
+			}
+
+			if (priv->sph && !buf->sec_page) {
+				buf->sec_page = page_pool_dev_alloc_pages(rx_q->page_pool);
+				if (!buf->sec_page)
+					goto err_reinit_rx_buffers;
+
+				buf->sec_addr = page_pool_get_dma_addr(buf->sec_page);
+				if(!buf->sec_addr) {
+					pr_err("buf->sec_addr is NULL");
+					goto err_reinit_rx_buffers;
+				}
+				stmmac_set_desc_sec_addr(priv, p, buf->sec_addr, true);
+			}
+			else {
+					buf->sec_page = NULL;
+					stmmac_set_desc_sec_addr(priv, p, buf->sec_addr, false);
+			}
+
+			stmmac_set_desc_addr(priv, p, buf->addr);
+
+			if (dma_conf->dma_buf_sz == BUF_SIZE_16KiB)
+				stmmac_init_desc3(priv, p);
+		}
+	}
+
+	return;
+
+err_reinit_rx_buffers:
+	pr_err(" error in reinit_rx_buffers");
+	do {
+		dma_free_rx_skbufs(priv, dma_conf, queue);
+		if (queue == 0)
+			break;
+	} while (queue-- > 0);
 }
 
 /**
@@ -3602,9 +3688,6 @@ static int stmmac_hw_setup(struct net_device *dev, bool ptp_register)
 	netif_set_real_num_rx_queues(dev, priv->plat->rx_queues_to_use);
 	netif_set_real_num_tx_queues(dev, priv->plat->tx_queues_to_use);
 
-	/* Start the ball rolling... */
-	stmmac_start_all_dma(priv);
-
 	if (priv->dma_cap.fpesel) {
 		stmmac_fpe_start_wq(priv);
 
@@ -3983,6 +4066,7 @@ static int __stmmac_open(struct net_device *dev,
 	u32 chan;
 	int ret;
 
+	netdev_info(priv->dev, "stmmac_open start");
 	ret = pm_runtime_resume_and_get(priv->device);
 	if (ret < 0)
 		return ret;
@@ -4049,6 +4133,7 @@ static int __stmmac_open(struct net_device *dev,
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
 
+	netdev_info(priv->dev, "stmmac_open end");
 	return 0;
 
 irq_error:
@@ -7833,6 +7918,8 @@ int stmmac_resume(struct device *dev)
 	mutex_lock(&priv->lock);
 
 	stmmac_reset_queues_param(priv);
+
+	stmmac_reinit_rx_buffers(priv, &priv->dma_conf);
 
 	stmmac_free_tx_skbufs(priv);
 	stmmac_clear_descriptors(priv, &priv->dma_conf);
