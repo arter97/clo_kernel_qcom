@@ -506,9 +506,12 @@ int stmmac_mdio_register(struct net_device *ndev)
 	} else {
 		err = new_bus->read(new_bus, phyaddr, MII_BMSR);
 		if (err == -EBUSY || !err || err == 0xffff) {
-			dev_warn(dev, "Invalid PHY address read from dtsi: %d\n",
-				 phyaddr);
-			new_bus->phy_mask = mdio_bus_data->phy_mask;
+			err = of_property_read_u32(np, "emac-cl45-phy-addr", &phyaddr);
+			new_bus->phy_mask = ~(1 << phyaddr);
+			skip_phy_detect = 1;
+			new_bus->read = &virtio_mdio_read_c45_indirect;
+			new_bus->write = &virtio_mdio_write_c45_indirect;
+			new_bus->probe_capabilities = MDIOBUS_C22_C45;
 		} else {
 			new_bus->phy_mask = ~(1 << phyaddr);
 			skip_phy_detect = 1;
@@ -518,7 +521,11 @@ int stmmac_mdio_register(struct net_device *ndev)
 	new_bus->parent = priv->device;
 
 	err = of_mdiobus_register(new_bus, mdio_node);
-	if (err != 0) {
+	if (err == -ENODEV) {
+		err = 0;
+		dev_info(dev, "MDIO bus is disabled\n");
+		goto bus_register_fail;
+	} else if (err) {
 		dev_err_probe(dev, err, "Cannot register the MDIO bus\n");
 		goto bus_register_fail;
 	}
