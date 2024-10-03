@@ -12,7 +12,7 @@
 #include <linux/gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/sched/clock.h>
-#include <linux/of_platform.h>
+
 #include "ci13xxx_udc.c"
 
 #define MSM_USB_BASE	(udc->regs)
@@ -345,8 +345,7 @@ static int ci13xxx_msm_probe(struct platform_device *pdev)
 	int ret;
 	struct ci13xxx_platform_data *pdata = pdev->dev.platform_data;
 	bool is_l1_supported = false;
-	struct device_node *msm_otg_np = NULL;
-	struct platform_device *msm_otg_pdev = NULL;
+
 
 	if (pdata) {
 		/* Acceptable values for nz_itc are: 0,1,2,4,8,16,32,64 */
@@ -389,24 +388,7 @@ static int ci13xxx_msm_probe(struct platform_device *pdev)
 
 	_udc->gadget.l1_supported = is_l1_supported;
 
-	msm_otg_np = of_find_compatible_node(NULL, NULL, "qcom,hsusb-otg");
-	if (!msm_otg_np) {
-		dev_err(&pdev->dev, "hsusb_otg node not found\n");
-		ret = -ENXIO;
-		goto udc_remove;
-	}
-
-	if (msm_otg_np) {
-		msm_otg_pdev = of_find_device_by_node(msm_otg_np);
-		if (!msm_otg_pdev) {
-			dev_err(&pdev->dev, "msm_otg pdev not found\n");
-			ret = -ENXIO;
-			goto udc_remove;
-		}
-	}
-
-	_udc_ctxt.irq = platform_get_irq(msm_otg_pdev, 0);
-
+	_udc_ctxt.irq = platform_get_irq(pdev, 0);
 	if (_udc_ctxt.irq < 0) {
 		dev_err(&pdev->dev, "IRQ not found\n");
 		ret = -ENXIO;

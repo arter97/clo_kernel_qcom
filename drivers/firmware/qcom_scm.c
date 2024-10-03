@@ -207,7 +207,6 @@ static enum qcom_scm_convention __get_convention(void)
 	 * use SMC_CONVENTION_ARM_64 for 64bit kernel and SMC_CONVENTION_ARM_32
 	 * for 32bit kernel.
 	 */
-
 #if IS_ENABLED(CONFIG_ARM64)
 	/*
 	 * Device isn't required as there is only one argument - no device
@@ -235,6 +234,7 @@ static enum qcom_scm_convention __get_convention(void)
 	ret = __scm_smc_call(NULL, &desc, probed_convention, &res, true);
 	if (!ret && res.result[0] == 1)
 		goto found;
+
 	probed_convention = SMC_CONVENTION_LEGACY;
 found:
 	spin_lock_irqsave(&scm_query_lock, flags);
