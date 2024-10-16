@@ -2377,7 +2377,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	} else {
 		ETHQOSERR("Phy interrupt configuration failed");
 	}
-	if (ethqos->emac_ver == EMAC_HW_v2_3_2_RG) {
+	if (ethqos->emac_ver == EMAC_HW_v2_3_2_RG || ethqos->emac_ver == EMAC_HW_v2_3_1) {
 		ethqos_pps_irq_config(ethqos);
 		create_pps_interrupt_device_node(&ethqos->avb_class_a_dev_t,
 						 &ethqos->avb_class_a_cdev,
@@ -2458,6 +2458,16 @@ static int qcom_ethqos_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	of_platform_depopulate(&pdev->dev);
 	return ret;
+}
+
+static void qcom_ethqos_shutdown_main(struct platform_device *pdev)
+{
+	struct net_device *dev = platform_get_drvdata(pdev);
+
+	if (!dev)
+		return;
+
+	qcom_ethqos_remove(pdev);
 }
 
 static int qcom_ethqos_suspend(struct device *dev)
@@ -2589,32 +2599,38 @@ static int qcom_ethqos_enable_clks(struct qcom_ethqos *ethqos, struct device *de
 			goto error_rgmii_get;
 		}
 	}
-	ethqos->sgmiref_clk = devm_clk_get(dev, "sgmi_ref");
-	if (IS_ERR(ethqos->sgmiref_clk)) {
-		dev_warn(dev, "Failed sgmi_ref\n");
-		ret = PTR_ERR(ethqos->sgmiref_clk);
-		goto error_sgmi_ref;
-	} else {
-		ret = clk_prepare_enable(ethqos->sgmiref_clk);
-		if (ret)
+	if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_USXGMII) {
+		ethqos->sgmiref_clk = devm_clk_get(dev, "sgmi_ref");
+		if (IS_ERR(ethqos->sgmiref_clk)) {
+			dev_warn(dev, "Failed sgmi_ref\n");
+			ret = PTR_ERR(ethqos->sgmiref_clk);
 			goto error_sgmi_ref;
-	}
-	ethqos->phyaux_clk = devm_clk_get(dev, "phyaux");
-	if (IS_ERR(ethqos->phyaux_clk)) {
-		dev_warn(dev,  "Failed phyaux\n");
-		ret = PTR_ERR(ethqos->phyaux_clk);
-		goto error_phyaux_ref;
-	} else {
-		ret = clk_prepare_enable(ethqos->phyaux_clk);
-		if (ret)
+		} else {
+			ret = clk_prepare_enable(ethqos->sgmiref_clk);
+			if (ret)
+				goto error_sgmi_ref;
+		}
+		ethqos->phyaux_clk = devm_clk_get(dev, "phyaux");
+		if (IS_ERR(ethqos->phyaux_clk)) {
+			dev_warn(dev,  "Failed phyaux\n");
+			ret = PTR_ERR(ethqos->phyaux_clk);
 			goto error_phyaux_ref;
+		} else {
+			ret = clk_prepare_enable(ethqos->phyaux_clk);
+			if (ret)
+				goto error_phyaux_ref;
+		}
 	}
 	return 0;
 
+	if (priv->plat->interface == PHY_INTERFACE_MODE_SGMII ||
+	    priv->plat->interface == PHY_INTERFACE_MODE_USXGMII) {
 error_phyaux_ref:
-	clk_disable_unprepare(ethqos->sgmiref_clk);
+		clk_disable_unprepare(ethqos->sgmiref_clk);
 error_sgmi_ref:
-	clk_disable_unprepare(ethqos->rgmii_clk);
+		clk_disable_unprepare(ethqos->rgmii_clk);
+	}
 error_rgmii_get:
 	clk_disable_unprepare(priv->plat->pclk);
 error_pclk_get:
@@ -2775,6 +2791,7 @@ static const struct dev_pm_ops qcom_ethqos_pm_ops = {
 static struct platform_driver qcom_ethqos_driver = {
 	.probe  = qcom_ethqos_probe,
 	.remove = qcom_ethqos_remove,
+	.shutdown = qcom_ethqos_shutdown_main,
 	.driver = {
 		.name           = DRV_NAME,
 		.pm             = &qcom_ethqos_pm_ops,
@@ -2831,6 +2848,13 @@ module_init(qcom_ethqos_init_module)
  */
 
 module_exit(qcom_ethqos_exit_module)
+
+#if IS_ENABLED(CONFIG_AQUANTIA_PHY)
+MODULE_SOFTDEP("post: aquantia");
+#endif
+#if IS_ENABLED(CONFIG_MARVELL_PHY)
+MODULE_SOFTDEP("post: marvell");
+#endif
 
 MODULE_DESCRIPTION("Qualcomm ETHQOS driver");
 MODULE_LICENSE("GPL v2");
