@@ -7220,8 +7220,9 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 		for (queue = 0; queue < queues_count; queue++) {
 			status = stmmac_host_mtl_irq_status(priv, priv->hw,
 							    queue);
-			if (status & CORE_IRQ_MTL_RX_OVERFLOW)
-				priv->xstats.q_rx_overflow_cntr[queue] += (status >> 9);
+			priv->xstats.q_rx_overflow_cntr[queue] +=
+			     stmmac_get_ovf_stats(priv, priv->hw, queue);
+
 		}
 
 		/* PCS link status */

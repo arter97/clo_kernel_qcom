@@ -413,15 +413,23 @@ static int dwxgmac2_host_mtl_irq_status(struct mac_device_info *hw, u32 chan)
 	if (status & BIT(chan)) {
 		chan_status = readl(ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 
-		if (chan_status & XGMAC_RXOVFIS) {
+		if (chan_status & XGMAC_RXOVFIS)
 			ret |= CORE_IRQ_MTL_RX_OVERFLOW;
-			ret |= ((readl(ioaddr + XGMAC_MTL_QOVERFLOW(chan)) & 0x7FF) << 9);
-		}
 
 		writel(~0x0, ioaddr + XGMAC_MTL_QINT_STATUS(chan));
 	}
 
 	return ret;
+}
+
+static int dwxgmac2_get_ovf_stats(struct mac_device_info *hw, u32 chan)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	int ovf_cnt = 0;
+
+	ovf_cnt = readl(ioaddr + XGMAC_MTL_QOVERFLOW(chan)) & 0x7FF;
+
+	return ovf_cnt;
 }
 
 static void dwxgmac2_flow_ctrl(struct mac_device_info *hw, unsigned int duplex,
@@ -2163,6 +2171,7 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.dump_regs = dwxgmac2_dump_regs,
 	.host_irq_status = dwxgmac2_host_irq_status,
 	.host_mtl_irq_status = dwxgmac2_host_mtl_irq_status,
+	.get_ovf_stats = dwxgmac2_get_ovf_stats,
 	.flow_ctrl = dwxgmac2_flow_ctrl,
 	.pmt = dwxgmac2_pmt,
 	.set_umac_addr = dwxgmac2_set_umac_addr,
