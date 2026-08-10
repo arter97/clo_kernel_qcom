@@ -6432,9 +6432,12 @@ read_again:
 			break;
 
 		/* Prefetch the next RX descriptor */
-		rx_q->cur_rx = STMMAC_GET_ENTRY(rx_q->cur_rx,
-						priv->dma_rx_size);
-		next_entry = rx_q->cur_rx;
+		next_entry = STMMAC_GET_ENTRY(rx_q->cur_rx,
+					      priv->dma_rx_size);
+		if (unlikely(next_entry == rx_q->dirty_rx))
+			break;
+
+		rx_q->cur_rx = next_entry;
 
 		if (priv->extend_desc)
 			np = (struct dma_desc *)(rx_q->dma_erx + next_entry);
@@ -6672,9 +6675,12 @@ read_again:
 		if (unlikely(status & dma_own))
 			break;
 
-		rx_q->cur_rx = STMMAC_GET_ENTRY(rx_q->cur_rx,
-						priv->dma_rx_size);
-		next_entry = rx_q->cur_rx;
+		next_entry = STMMAC_GET_ENTRY(rx_q->cur_rx,
+					      priv->dma_rx_size);
+		if (unlikely(next_entry == rx_q->dirty_rx))
+			break;
+
+		rx_q->cur_rx = next_entry;
 
 		if (priv->extend_desc)
 			np = (struct dma_desc *)(rx_q->dma_erx + next_entry);
