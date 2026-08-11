@@ -372,6 +372,8 @@ struct stmmac_ops {
 			       struct stmmac_extra_stats *x);
 	/* Handle MTL interrupts */
 	int (*host_mtl_irq_status)(struct mac_device_info *hw, u32 chan);
+	/* Get per queue overflow stats */
+	int (*get_ovf_stats)(struct mac_device_info *hw, u32 chan);
 	/* Multicast filter setting */
 	void (*set_filter)(struct mac_device_info *hw, struct net_device *dev);
 	/* Flow control setting */
@@ -514,6 +516,8 @@ struct stmmac_ops {
 	stmmac_do_callback(__priv, mac, host_irq_status, __args)
 #define stmmac_host_mtl_irq_status(__priv, __args...) \
 	stmmac_do_callback(__priv, mac, host_mtl_irq_status, __args)
+#define stmmac_get_ovf_stats(__priv, __args...) \
+	stmmac_do_callback(__priv, mac, get_ovf_stats, __args)
 #define stmmac_set_filter(__priv, __args...) \
 	stmmac_do_void_callback(__priv, mac, set_filter, __args)
 #define stmmac_flow_ctrl(__priv, __args...) \
