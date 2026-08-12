@@ -196,6 +196,14 @@ static void dwxgmac2_dma_rx_mode(void __iomem *ioaddr, int mode,
 			rfd = 0x18; /* Full-13K */
 			rfa = 0x12; /* Full-10K */
 			break;
+		case 19712:
+			rfd = 0x21; /* Full-17.5K */
+			rfa = 0x19; /* Full-13.5K */
+			break;
+		case 16128:
+			rfd = 0x18; /* Full-13K */
+			rfa = 0x15; /* Full-11.5K */
+			break;
 		default:
 			rfd = 0x07; /* Full-4.5K */
 			rfa = 0x04; /* Full-3K */
