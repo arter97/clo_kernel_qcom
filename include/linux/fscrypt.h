@@ -1089,4 +1089,11 @@ static inline void fscrypt_finalize_bounce_page(struct page **pagep)
 	}
 }
 
+#ifdef CONFIG_QCOM_FSPAPP_FSCRYPT
+extern int fscrypt_add_key_from_kernel(struct super_block *sb,
+				const u8 *raw_key,
+				u32 raw_key_size,
+				u8 identifier[FSCRYPT_KEY_IDENTIFIER_SIZE]);
+#endif
+
 #endif	/* _LINUX_FSCRYPT_H */

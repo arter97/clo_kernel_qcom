@@ -1231,6 +1231,46 @@ out:
 }
 EXPORT_SYMBOL_GPL(fscrypt_ioctl_get_key_status);
 
+#ifdef CONFIG_QCOM_FSPAPP_FSCRYPT
+int fscrypt_add_key_from_kernel(struct super_block *sb,
+				const u8 *raw_key,
+				u32 raw_key_size,
+				u8 identifier[FSCRYPT_KEY_IDENTIFIER_SIZE])
+{
+	struct fscrypt_master_key_secret secret;
+	struct fscrypt_key_specifier key_spec;
+	int err;
+
+	if (!sb || !raw_key || !identifier)
+		return -EINVAL;
+
+	if (raw_key_size < FSCRYPT_MIN_KEY_SIZE ||
+	    raw_key_size > FSCRYPT_MAX_STANDARD_KEY_SIZE)
+		return -EINVAL;
+
+	memset(&secret, 0, sizeof(secret));
+	memset(&key_spec, 0, sizeof(key_spec));
+
+	secret.size = raw_key_size;
+	memcpy(secret.raw, raw_key, raw_key_size);
+
+	key_spec.type = FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER;
+
+	err = add_master_key(sb, &secret, &key_spec);
+	if (err)
+		goto out_wipe_secret;
+
+	memcpy(identifier,
+	       key_spec.u.identifier,
+	       FSCRYPT_KEY_IDENTIFIER_SIZE);
+
+out_wipe_secret:
+	wipe_master_key_secret(&secret);
+	return err;
+}
+EXPORT_SYMBOL_GPL(fscrypt_add_key_from_kernel);
+#endif
+
 int __init fscrypt_init_keyring(void)
 {
 	int err;

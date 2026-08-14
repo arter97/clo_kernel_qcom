@@ -603,6 +603,15 @@ config FSPAPP_CLIENT
 
 	  If unsure, say N.
 
+config QCOM_FSPAPP_FSCRYPT
+	tristate "Qualcomm FSPAPP backed fscrypt key loader"
+	depends on FS_ENCRYPTION
+	help
+	  This driver retrieves an fscrypt wrapped data key from a wrapped-key MBN,
+	  requests key unwrapping through the FSPAPP QTEE service, and adds the
+	  resulting raw key to the fscrypt filesystem-level keyring while keeping
+	  it inaccessible from userspace.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
