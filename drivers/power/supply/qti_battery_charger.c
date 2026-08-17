@@ -302,7 +302,7 @@ struct battery_chg_dev {
 	bool				notify_en;
 	bool				error_prop;
 	bool				micro_usb;
-	unsigned int			num_usb_ports;
+	u32				num_usb_ports;
 };
 
 static const int battery_prop_map[BATT_PROP_MAX] = {
@@ -1665,19 +1665,18 @@ static int battery_chg_init_psy(struct battery_chg_dev *bcdev)
 		return rc;
 	}
 
-	pst = &bcdev->psy_list[PSY_TYPE_USB];
-	rc = read_property_id(bcdev, pst, USB_NUM_PORTS);
-	if (rc < 0) {
-		pr_debug("Failed to read prop USB_NUM_PORTS, rc=%d\n", rc);
-		bcdev->num_usb_ports = 1;
-	} else if (pst->prop[USB_NUM_PORTS] > NUM_USB_PORTS) {
-		pr_err("Number of USB ports detected as supported:%d, greater than 2\n",
-			pst->prop[USB_NUM_PORTS]);
-		return -EINVAL;
-	} else if (pst->prop[USB_NUM_PORTS] != bcdev->num_usb_ports) {
-		pr_err("Number of USB ports detected as supported:%d, configured in apps:%d\n",
-			pst->prop[USB_NUM_PORTS], bcdev->num_usb_ports);
-		bcdev->num_usb_ports = 1;
+	if (bcdev->num_usb_ports > 1) {
+		pst = &bcdev->psy_list[PSY_TYPE_USB];
+		rc = read_property_id(bcdev, pst, USB_NUM_PORTS);
+		if (rc < 0) {
+			pr_debug("Failed to read prop USB_NUM_PORTS, rc=%d\n", rc);
+		} else if (pst->prop[USB_NUM_PORTS] > NUM_USB_PORTS) {
+			pr_err("Number of USB ports detected as supported:%d, greater than 2\n",
+				pst->prop[USB_NUM_PORTS]);
+		} else if (pst->prop[USB_NUM_PORTS] != bcdev->num_usb_ports) {
+			pr_err("Number of USB ports detected as supported:%d, configured in apps:%d\n",
+				pst->prop[USB_NUM_PORTS], bcdev->num_usb_ports);
+		}
 	}
 
 	if (bcdev->num_usb_ports == 2) {
@@ -2448,11 +2447,6 @@ static int battery_chg_parse_dt(struct battery_chg_dev *bcdev)
 	of_property_read_u32(node, "qcom,shutdown-voltage",
 				&bcdev->shutdown_volt_mv);
 
-	if (of_property_read_bool(bcdev->dev->of_node, "qcom,multiport-usb"))
-		bcdev->num_usb_ports = 2;
-	else
-		bcdev->num_usb_ports = 1;
-
 	rc = read_property_id(bcdev, pst, BATT_CHG_CTRL_LIM_MAX);
 	if (rc < 0) {
 		pr_err("Failed to read prop BATT_CHG_CTRL_LIM_MAX, rc=%d\n",
@@ -2757,12 +2751,26 @@ static int battery_chg_probe(struct platform_device *pdev)
 	bcdev->psy_list[PSY_TYPE_WLS].opcode_set = BC_WLS_STATUS_SET;
 	bcdev->usb_active[USB_1_PORT_ID] = true;
 
-	bcdev->psy_list[PSY_TYPE_USB_2].map = usb_prop_map;
-	bcdev->psy_list[PSY_TYPE_USB_2].prop_count = USB_PROP_MAX;
-	bcdev->psy_list[PSY_TYPE_USB_2].opcode_get = BC_USB_STATUS_GET(USB_2_PORT_ID);
-	bcdev->psy_list[PSY_TYPE_USB_2].opcode_set = BC_USB_STATUS_SET(USB_2_PORT_ID);
+	rc = of_property_read_u32(dev->of_node, "qcom,multiport-usb", &bcdev->num_usb_ports);
+	if (rc < 0)
+		bcdev->num_usb_ports = 1;
+
+	if (bcdev->num_usb_ports > NUM_USB_PORTS) {
+		dev_err(dev, "Invalid num_usb_ports %d, maximum is %d\n",
+				bcdev->num_usb_ports, NUM_USB_PORTS);
+		return -EINVAL;
+	}
+
+	if (bcdev->num_usb_ports == 2) {
+		bcdev->psy_list[PSY_TYPE_USB_2].map = usb_prop_map;
+		bcdev->psy_list[PSY_TYPE_USB_2].prop_count = USB_PROP_MAX;
+		bcdev->psy_list[PSY_TYPE_USB_2].opcode_get = BC_USB_STATUS_GET(USB_2_PORT_ID);
+		bcdev->psy_list[PSY_TYPE_USB_2].opcode_set = BC_USB_STATUS_SET(USB_2_PORT_ID);
+	}
 
 	for (i = 0; i < PSY_TYPE_MAX; i++) {
+		if (i == PSY_TYPE_USB_2 && bcdev->num_usb_ports < 2)
+			continue;
 		bcdev->psy_list[i].prop =
 			devm_kcalloc(&pdev->dev, bcdev->psy_list[i].prop_count,
 					sizeof(u32), GFP_KERNEL);
