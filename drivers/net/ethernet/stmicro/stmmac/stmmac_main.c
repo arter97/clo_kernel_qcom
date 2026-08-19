@@ -6432,9 +6432,12 @@ read_again:
 			break;
 
 		/* Prefetch the next RX descriptor */
-		rx_q->cur_rx = STMMAC_GET_ENTRY(rx_q->cur_rx,
-						priv->dma_rx_size);
-		next_entry = rx_q->cur_rx;
+		next_entry = STMMAC_GET_ENTRY(rx_q->cur_rx,
+					      priv->dma_rx_size);
+		if (unlikely(next_entry == rx_q->dirty_rx))
+			break;
+
+		rx_q->cur_rx = next_entry;
 
 		if (priv->extend_desc)
 			np = (struct dma_desc *)(rx_q->dma_erx + next_entry);
@@ -6672,9 +6675,12 @@ read_again:
 		if (unlikely(status & dma_own))
 			break;
 
-		rx_q->cur_rx = STMMAC_GET_ENTRY(rx_q->cur_rx,
-						priv->dma_rx_size);
-		next_entry = rx_q->cur_rx;
+		next_entry = STMMAC_GET_ENTRY(rx_q->cur_rx,
+					      priv->dma_rx_size);
+		if (unlikely(next_entry == rx_q->dirty_rx))
+			break;
+
+		rx_q->cur_rx = next_entry;
 
 		if (priv->extend_desc)
 			np = (struct dma_desc *)(rx_q->dma_erx + next_entry);
@@ -7220,8 +7226,9 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 		for (queue = 0; queue < queues_count; queue++) {
 			status = stmmac_host_mtl_irq_status(priv, priv->hw,
 							    queue);
-			if (status & CORE_IRQ_MTL_RX_OVERFLOW)
-				priv->xstats.q_rx_overflow_cntr[queue] += (status >> 9);
+			priv->xstats.q_rx_overflow_cntr[queue] +=
+			     stmmac_get_ovf_stats(priv, priv->hw, queue);
+
 		}
 
 		/* PCS link status */
