@@ -8,9 +8,15 @@
 #include <linux/phy.h>
 #include <linux/phy/phy.h>
 #include <linux/pcs-xpcs-qcom.h>
+#include <linux/of_irq.h>
+#include <linux/irqdomain.h>
 
 #include "stmmac.h"
 #include "stmmac_platform.h"
+#include <linux/iopoll.h>
+
+#define DMA_BUS_MODE			0x00001000
+#define DMA_BUS_MODE_SFT_RESET		(0x1 << 0)
 
 #define RGMII_IO_MACRO_CONFIG		0x0
 #define SDCC_HC_REG_DLL_CONFIG		0x4
@@ -150,6 +156,7 @@ struct qcom_ethqos {
 	unsigned int speed;
 	int serdes_speed;
 	phy_interface_t phy_mode;
+	int switch_reset_detect_irq;
 
 	const struct ethqos_emac_por *por;
 	unsigned int num_por;
@@ -960,6 +967,28 @@ static int ethqos_configure(struct qcom_ethqos *ethqos)
 	return ethqos->configure_func(ethqos);
 }
 
+/* QCOM GMAC4 DMA soft reset requires an internal clock reference (SGMII
+ * TX-to-RX loopback) when the external PHY clock is unavailable (e.g. after
+ * a safety error brings the link down). Without this loopback, the DMA
+ * reset bit never auto-clears and the reset times out.
+ */
+static int qcom_ethqos_dma_reset(void *priv, void __iomem *ioaddr)
+{
+	struct plat_stmmacenet_data *plat = priv;
+	struct qcom_ethqos *ethqos = plat->bsp_priv;
+	u32 value;
+
+	ethqos_set_func_clk_en(ethqos);
+
+	value = readl(ioaddr + DMA_BUS_MODE);
+	value |= DMA_BUS_MODE_SFT_RESET;
+	writel(value, ioaddr + DMA_BUS_MODE);
+
+	return readl_poll_timeout(ioaddr + DMA_BUS_MODE, value,
+				  !(value & DMA_BUS_MODE_SFT_RESET),
+				  10000, 1000000);
+}
+
 static void ethqos_safety_feature(struct stmmac_priv *priv, bool en)
 {
 	if (priv->sfty_irq > 0) {
@@ -984,6 +1013,92 @@ static void ethqos_fix_mac_speed(void *priv_n, unsigned int speed, unsigned int 
 		qcom_xpcs_link_up(priv->hw->phylink_pcs, mode,
 				  priv->plat->phy_interface, speed,
 				  DUPLEX_FULL);
+}
+
+static int qcom_ethqos_map_switch_reset_detect_irq(struct device *dev)
+{
+	struct device_node *np = dev->of_node;
+	struct device_node *irq_np;
+	int irq;
+
+	irq_np = of_parse_phandle(np, "switch-reset-detect-source", 0);
+	if (!irq_np) {
+		dev_dbg(dev, "switch-reset-detect-source node not found\n");
+		return 0;
+	}
+
+	if (!of_property_present(irq_np, "interrupts") &&
+	    !of_property_present(irq_np, "interrupts-extended")) {
+		dev_dbg(dev, "No interrupts in switch reset detect node\n");
+		of_node_put(irq_np);
+		return 0;
+	}
+
+	irq = irq_of_parse_and_map(irq_np, 0);
+	of_node_put(irq_np);
+
+	if (!irq) {
+		dev_dbg(dev, "Map switch reset detect IRQ failed\n");
+		return 0;
+	}
+
+	return irq;
+}
+
+static void qcom_ethqos_unmap_switch_reset_detect_irq(void *data)
+{
+	irq_dispose_mapping((unsigned int)(unsigned long)data);
+}
+
+static irqreturn_t qcom_ethqos_switch_reset_detect_irq_handler(int irq, void *data)
+{
+	struct qcom_ethqos *ethqos = data;
+	struct net_device *ndev = platform_get_drvdata(ethqos->pdev);
+	struct stmmac_priv *priv;
+
+	if (!ndev)
+		return IRQ_NONE;
+
+	priv = netdev_priv(ndev);
+	stmmac_handle_switch_reset(priv);
+
+	return IRQ_HANDLED;
+}
+
+static void qcom_ethqos_setup_switch_reset_detect_irq(struct device *dev,
+						      struct qcom_ethqos *ethqos)
+{
+	int irq, ret;
+
+	ethqos->switch_reset_detect_irq = 0;
+
+	irq = qcom_ethqos_map_switch_reset_detect_irq(dev);
+	if (irq <= 0)
+		return;
+
+	ret = devm_add_action_or_reset(dev,
+				       qcom_ethqos_unmap_switch_reset_detect_irq,
+				       (void *)(unsigned long)irq);
+	if (ret) {
+		dev_warn(dev, "Failed to register IRQ cleanup: %d\n", ret);
+		/* The action will be called on failure; irq mapping already cleaned up */
+		return;
+	}
+
+	ret = devm_request_irq(dev, irq,
+			       qcom_ethqos_switch_reset_detect_irq_handler,
+			       IRQF_TRIGGER_FALLING | IRQF_SHARED,
+			       "qcom-ethqos-detect", ethqos);
+	if (ret) {
+		dev_warn(dev, "Failed to request switch reset detect IRQ %d: %d\n",
+			 irq, ret);
+		return;
+	}
+
+	ethqos->switch_reset_detect_irq = irq;
+
+	dev_info(dev, "Registered switch reset detect IRQ %d\n",
+		 ethqos->switch_reset_detect_irq);
 }
 
 static int qcom_ethqos_serdes_powerup(struct net_device *ndev, void *priv)
@@ -1088,6 +1203,41 @@ static void qcom_ethqos_get_queue_and_tc_from_vdma(struct stmmac_priv *priv,
 	if (!*queue_mask)
 		netdev_warn(priv->dev, "No PDMA channel found for VDMA %u (TC %u)\n",
 			    vdma_ch, *tc);
+}
+
+static void ethqos_report_uevents(struct stmmac_priv *priv, enum stmmac_uevent_type event)
+{
+	char phy_mode[32];
+	char event_type[32];
+	char *envp[3];
+	int i = 0;
+
+	switch (event) {
+	case FUSA_ERROR:
+		snprintf(event_type, sizeof(event_type), "SAFETY_EVENT=FUSA_ERROR");
+		break;
+	case MAC_DOWN:
+		snprintf(event_type, sizeof(event_type), "SAFETY_EVENT=MAC_DOWN");
+		break;
+	case MAC_UP:
+		snprintf(event_type, sizeof(event_type), "SAFETY_EVENT=MAC_UP");
+		break;
+	default:
+		dev_warn(priv->device, "Unknown UMD event %d\n", event);
+		return;
+	}
+
+	envp[i++] = event_type;
+
+	if (event != FUSA_ERROR) {
+		snprintf(phy_mode, sizeof(phy_mode), "PHY_MODE=%s",
+			 phy_modes(priv->plat->phy_interface));
+		envp[i++] = phy_mode;
+	}
+
+	envp[i] = NULL;
+
+	kobject_uevent_env(&priv->device->kobj, KOBJ_CHANGE, envp);
 }
 
 static int qcom_ethqos_hdma_cfg(struct platform_device *pdev, struct plat_stmmacenet_data *plat)
@@ -1292,6 +1442,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	ethqos_update_link_clk(ethqos, SPEED_1000);
 	ethqos_set_func_clk_en(ethqos);
 
+	if (stmmac_res.sfty_irq > 0) {
+		plat_dat->report_uevents = ethqos_report_uevents;
+		plat_dat->flags |= STMMAC_FLAG_HAS_ERROR_UEVENT;
+	}
 	plat_dat->bsp_priv = ethqos;
 	plat_dat->fix_mac_speed = ethqos_fix_mac_speed;
 	plat_dat->dump_debug_regs = rgmii_dump;
@@ -1314,6 +1468,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 				qcom_ethqos_get_queue_and_tc_from_vdma;
 		}
 	}
+	if (plat_dat->has_gmac4)
+		plat_dat->fix_soc_reset = qcom_ethqos_dma_reset;
 	if (of_property_present(dev->of_node, "qcom-xpcs-handle")) {
 		plat_dat->pcs_init = ethqos_xpcs_init;
 		plat_dat->pcs_exit = ethqos_xpcs_exit;
@@ -1342,7 +1498,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
 	for (i = 1; i < plat_dat->tx_queues_to_use; i++)
 		plat_dat->tx_queues_cfg[i].tbs_en = 1;
 
-	return devm_stmmac_pltfr_probe(pdev, plat_dat, &stmmac_res);
+	ret = devm_stmmac_pltfr_probe(pdev, plat_dat, &stmmac_res);
+
+	/* Register switch reset detect IRQ */
+	if (!ret)
+		qcom_ethqos_setup_switch_reset_detect_irq(dev, ethqos);
+
+	return ret;
 }
 
 static const struct of_device_id qcom_ethqos_match[] = {

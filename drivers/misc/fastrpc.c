@@ -39,15 +39,22 @@
 #define FASTRPC_MAX_FDLIST	16
 #define FASTRPC_MAX_CRCLIST	64
 #define FASTRPC_PHYS(p)	((p) & 0xffffffff)
-#define FASTRPC_CTX_MAX (256)
+#define FASTRPC_CTX_MAX (1024)
 #define FASTRPC_INIT_HANDLE	1
 #define FASTRPC_DSP_UTILITIES_HANDLE	2
 #define FASTRPC_MAX_STATIC_HANDLE (20)
-#define FASTRPC_CTXID_MASK (0xFF0000)
+#define FASTRPC_CTXID_MASK (0xFFF0000)
 #define FASTRPC_CLIENTID_MASK (16)
 #define INIT_FILELEN_MAX (5 * 1024 * 1024)
 #define INIT_FILE_NAMELEN_MAX (128)
 #define FASTRPC_DEVICE_NAME	"fastrpc"
+
+/* Starting position of job id counter in context id */
+#define FASTRPC_CTXID_JOBID_POS (28)
+
+/* Macro to pack job id counter into context id  */
+#define FASTRPC_PACK_JOBID_IN_CTXID(ctxid, jobid) (ctxid | \
+		(jobid << FASTRPC_CTXID_JOBID_POS))
 
 /* Add memory to static PD pool, protection thru XPU */
 #define ADSP_MMAP_HEAP_ADDR  4
@@ -359,6 +366,7 @@ struct fastrpc_channel_ctx {
 	bool secure;
 	bool unsigned_support;
 	u64 dma_mask;
+	u64 jobid;
 };
 
 struct fastrpc_device {
@@ -650,7 +658,7 @@ static void fastrpc_context_free(struct kref *ref)
 		fastrpc_buf_free(ctx->buf);
 
 	spin_lock_irqsave(&cctx->lock, flags);
-	idr_remove(&cctx->ctx_idr, ctx->ctxid >> 16);
+	idr_remove(&cctx->ctx_idr, (ctx->ctxid & FASTRPC_CTXID_MASK) >> 16);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	kfree(ctx->perf);
@@ -786,7 +794,9 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		goto err_idr;
 	}
+	cctx->jobid++;
 	ctx->ctxid = ret << 16;
+	ctx->ctxid = FASTRPC_PACK_JOBID_IN_CTXID(ctx->ctxid, cctx->jobid);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	kref_init(&ctx->refcount);
@@ -3138,20 +3148,29 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	struct fastrpc_invoke_ctx *ctx;
 	unsigned long flags;
 	unsigned long ctxid;
+	unsigned long idr;
 
 	if (len < sizeof(*rsp))
 		return -EINVAL;
 
-	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 16);
+	ctxid = (rsp->ctx & ~(((1 << 16) - 1)));
+	idr = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 16);
 
 	spin_lock_irqsave(&cctx->lock, flags);
-	ctx = idr_find(&cctx->ctx_idr, ctxid);
+	ctx = idr_find(&cctx->ctx_idr, idr);
 
 	if (!ctx) {
 		dev_dbg(&rpdev->dev, "No context ID matches response\n");
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		return 0;
 	}
+	if (ctx->ctxid != ctxid) {
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		dev_dbg(&rpdev->dev, "Warning: rsp ctxid 0x%llx mismatch with local ctxid 0x%llx (full rsp ctx 0x%llx)\n",
+				ctxid, ctx->ctxid, rsp->ctx);
+		return 0;
+	}
+
 
 	ctx->retval = rsp->retval;
 	ctx->is_work_done = true;

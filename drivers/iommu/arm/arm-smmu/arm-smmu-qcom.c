@@ -593,6 +593,35 @@ static const struct actlr_config qcs8300_gfx_actlr_cfg[] = {
 	{0x0, 0x3ff, PREFETCH_DEEP_GFX | CPRE | CMTLB },
 };
 
+static const struct actlr_config qcs615_apps_actlr_cfg[] = {
+	{ 0x0820, 0x0040, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0840, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0c00, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0c80, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0ca0, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0cc0, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0d00, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0d20, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0d40, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0d80, 0x0020, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0de2, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0800, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0801, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0c40, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0c41, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0e40, 0x0020, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0e44, 0x0020, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0e61, 0x0004, PREFETCH_SHALLOW | CPRE | CMTLB },
+	{ 0x0e63, 0x0000, PREFETCH_SHALLOW | CPRE | CMTLB },
+};
+
+static const struct actlr_config qcs615_gfx_actlr_cfg[] = {
+	{ 0x0000, 0x0401, PREFETCH_DEEP_GFX | CPRE | CMTLB },
+	{ 0x0002, 0x0400, PREFETCH_DEEP_GFX | CPRE | CMTLB },
+	{ 0x0007, 0x0400, PREFETCH_DEEP_GFX | CPRE | CMTLB },
+	{ 0x0009, 0x0400, PREFETCH_DEEP_GFX | CPRE | CMTLB },
+};
+
 static struct qcom_smmu *to_qcom_smmu(struct arm_smmu_device *smmu)
 {
 	return container_of(smmu, struct qcom_smmu, smmu);
@@ -1357,6 +1386,17 @@ static const struct qcom_smmu_match_data qcs8300_smmu_500_impl0_data = {
 	.actlrcfg_gfx = qcs8300_gfx_actlr_cfg,
 	.actlrcfg_gfx_size = ARRAY_SIZE(qcs8300_gfx_actlr_cfg),
 };
+
+static const struct qcom_smmu_match_data qcs615_smmu_500_impl0_data = {
+	.impl = &qcom_smmu_500_impl,
+	.adreno_impl = &qcom_adreno_smmu_500_impl,
+	.cfg = &qcom_smmu_impl0_cfg,
+	.actlrcfg = qcs615_apps_actlr_cfg,
+	.actlrcfg_size = ARRAY_SIZE(qcs615_apps_actlr_cfg),
+	.actlrcfg_gfx = qcs615_gfx_actlr_cfg,
+	.actlrcfg_gfx_size = ARRAY_SIZE(qcs615_gfx_actlr_cfg),
+};
+
 static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
 	.impl = &qcom_smmu_500_impl,
 	.adreno_impl = &qcom_adreno_smmu_500_impl,
@@ -1371,6 +1411,7 @@ static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
 	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
 	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
 	{ .compatible = "qcom,qcm2290-smmu-500", .data = &qcom_smmu_500_impl0_data },
+	{ .compatible = "qcom,qcs615-smmu-500", .data = &qcs615_smmu_500_impl0_data },
 	{ .compatible = "qcom,qcs8300-smmu-500", .data = &qcs8300_smmu_500_impl0_data },
 	{ .compatible = "qcom,qdu1000-smmu-500", .data = &qcom_smmu_500_impl0_data  },
 	{ .compatible = "qcom,sc7180-smmu-500", .data = &qcom_smmu_500_impl0_data },

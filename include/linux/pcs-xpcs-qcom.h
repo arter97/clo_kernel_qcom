@@ -23,6 +23,7 @@ struct dw_xpcs_qcom {
 	const struct xpcs_id *id;
 	struct phylink_pcs pcs;
 	void __iomem *addr;
+	struct device *dev;
 	int pcs_intr;
 	int pcs_fusa_intr;
 	int pcs_fusa_error_count;
@@ -30,6 +31,7 @@ struct dw_xpcs_qcom {
 	bool needs_aneg;
 	int phy_interface;
 	struct reset_control *reset_serdes;
+	struct work_struct uevent_work;
 };
 
 struct phylink_pcs *qcom_xpcs_create(struct device_node *np,

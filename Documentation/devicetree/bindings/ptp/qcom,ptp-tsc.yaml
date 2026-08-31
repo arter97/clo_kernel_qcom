@@ -73,6 +73,12 @@ properties:
        use cases and requires additional safety handling.
      type: boolean
 
+  qcom,tsc-pipeline-stages:
+    description:
+      Specifies the number of pipeline stages for this TSC instance.
+      If not specified, the default is 24 stages.
+    type: integer
+
 patternProperties:
   "^slice[0-9]+$":
     type: object

@@ -41,4 +41,16 @@ config QCOM_SI_CORE_MEM_OBJECT
 	  to create memory object and do the necessary mapping and unmapping
 	  using QTEE shared memory driver.
 
+config QCOM_SI_CORE_UEFISECAPP
+	tristate "Add support for uefisecapp client driver"
+	depends on QCOM_SI_CORE && EFI_DISABLE_RUNTIME
+	help
+	  On platforms using the Qualcomm UEFI Secure Application (uefisecapp),
+	  EFI variables cannot be accessed via the standard interface in EFI
+	  runtime mode. The respective functions return EFI_UNSUPPORTED. On these
+	  platforms, we instead need to talk to uefisecapp.
+
+	  Enable to access EFI variables on platforms without EFI runtime
+	  support.
+
 source "drivers/firmware/qcom/si_core/si_core_xts/Kconfig"

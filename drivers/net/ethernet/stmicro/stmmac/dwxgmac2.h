@@ -12,6 +12,7 @@
 
 /* Misc */
 #define XGMAC_JUMBO_LEN			16368
+#define XGMAC_RX_ERR_THRESHOLD		16
 
 /* MAC Registers */
 #define XGMAC_TX_CONFIG			0x00000000
@@ -399,7 +400,9 @@ static inline u32 xgmac_mtl_chanx_base_addr(const struct dwxgmac_addrs *addrs,
 #define XGMAC_RQS			GENMASK(25, 16)
 #define XGMAC_RQS_SHIFT			16
 #define XGMAC_EHFC			BIT(7)
+#define XGMAC_DIS_TCP_EF		BIT(6)
 #define XGMAC_RSF			BIT(5)
+#define XGMAC_FEF			BIT(4)
 #define XGMAC_RTC			GENMASK(1, 0)
 #define XGMAC_RTC_SHIFT			0
 #define XGMAC_MTL_RXQ_FLOW_CONTROL(addrs, x)	(xgmac_mtl_chanx_base_addr(addrs, x) + 0x50)
@@ -514,6 +517,7 @@ static inline u32 xgmac_dma_chanx_base_addr(const struct dwxgmac_addrs *addrs,
 #define XGMAC_RBUE			BIT(7)
 #define XGMAC_RIE			BIT(6)
 #define XGMAC_TBUE			BIT(2)
+#define XGMAC_TXSE			BIT(1)
 #define XGMAC_TIE			BIT(0)
 #define XGMAC_DMA_INT_DEFAULT_EN	(XGMAC_NIE | XGMAC_AIE | XGMAC_RBUE | \
 					XGMAC_RIE | XGMAC_TIE | XGMAC_FBEE)
@@ -586,6 +590,10 @@ static inline u32 xgmac_dma_chanx_base_addr(const struct dwxgmac_addrs *addrs,
 #define XGMAC_RDES3_RSV			BIT(26)
 #define XGMAC_RDES3_L34T		GENMASK(23, 20)
 #define XGMAC_RDES3_L2T			GENMASK(19, 16)
+#define XGMAC_RDES3_L2T_SHIFT		16
+#define XGMAC_RDES3_L2T_CRC_ERR		0x3
+#define XGMAC_RDES3_L2T_CSUM_ERR	0x6
+#define XGMAC_RDES3_L2T_OVERFLOW	0x7
 #define XGMAC_RDES3_L34T_SHIFT		20
 #define XGMAC_L34T_IP4TCP		0x1
 #define XGMAC_L34T_IP4UDP		0x2

@@ -248,12 +248,29 @@ static int adv7511_hook_plugged_cb(struct device *dev, void *data,
 	return 0;
 }
 
+static int adv7511_audio_get_eld(struct device *dev, void *data,
+				 uint8_t *buf, size_t len)
+{
+	struct adv7511 *adv7511 = dev_get_drvdata(dev);
+	size_t copy_len;
+
+	(void)data;
+	copy_len = min_t(size_t, sizeof(adv7511->connector.eld), len);
+
+	mutex_lock(&adv7511->eld_lock);
+	memcpy(buf, adv7511->connector.eld, copy_len);
+	mutex_unlock(&adv7511->eld_lock);
+
+	return 0;
+}
+
 static const struct hdmi_codec_ops adv7511_codec_ops = {
 	.hw_params	 = adv7511_hdmi_hw_params,
 	.audio_shutdown  = audio_shutdown,
 	.audio_startup	 = audio_startup,
 	.get_dai_id	 = adv7511_hdmi_i2s_get_dai_id,
 	.hook_plugged_cb = adv7511_hook_plugged_cb,
+	.get_eld	 = adv7511_audio_get_eld,
 };
 
 static const struct hdmi_codec_pdata codec_data = {

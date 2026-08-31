@@ -52,7 +52,13 @@ static void dwxgmac2_dma_init_chan(struct stmmac_priv *priv,
 		value |= XGMAC_PBLx8;
 
 	writel(value, ioaddr + XGMAC_DMA_CH_CONTROL(dwxgmac_addrs, chan));
-	writel(XGMAC_DMA_INT_DEFAULT_EN, ioaddr + XGMAC_DMA_CH_INT_EN(dwxgmac_addrs, chan));
+
+	value = XGMAC_DMA_INT_DEFAULT_EN;
+
+	if (priv->plat->flags & STMMAC_FLAG_HAS_ERROR_UEVENT)
+		value |= XGMAC_TXSE;
+
+	writel(value, ioaddr + XGMAC_DMA_CH_INT_EN(dwxgmac_addrs, chan));
 }
 
 static void dwxgmac2_dma_init_rx_chan(struct stmmac_priv *priv,
@@ -218,6 +224,9 @@ static void dwxgmac2_dma_rx_mode(struct stmmac_priv *priv, void __iomem *ioaddr,
 		writel(flow, ioaddr + XGMAC_MTL_RXQ_FLOW_CONTROL(dwxgmac_addrs, channel));
 	}
 
+	if (priv->plat->flags & STMMAC_FLAG_HAS_ERROR_UEVENT)
+		value |= XGMAC_DIS_TCP_EF | XGMAC_FEF;
+
 	writel(value, ioaddr + XGMAC_MTL_RXQ_OPMODE(dwxgmac_addrs, channel));
 }
 
@@ -364,10 +373,14 @@ static int dwxgmac2_dma_interrupt(struct stmmac_priv *priv,
 		}
 		if (unlikely(intr_status & XGMAC_TPS)) {
 			x->tx_process_stopped_irq++;
+			if (priv->plat->flags & STMMAC_FLAG_HAS_ERROR_UEVENT)
+				queue_work(priv->wq, &priv->uevent_work);
 			ret |= tx_hard_error;
 		}
 		if (unlikely(intr_status & XGMAC_FBE)) {
 			x->fatal_bus_error_irq++;
+			if (priv->plat->flags & STMMAC_FLAG_HAS_ERROR_UEVENT)
+				queue_work(priv->wq, &priv->uevent_work);
 			ret |= tx_hard_error;
 		}
 	}

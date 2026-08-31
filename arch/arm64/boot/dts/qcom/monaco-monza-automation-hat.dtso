@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * Device tree overlay for the Pimoroni Automation HAT connected to the
+ * Monza 40-pin JHAT connector.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+&i2c0 {
+	clock-frequency = <400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	/* Pimoroni Automation HAT - ADS1015 ADC */
+	automation_hat_adc: adc@48 {
+		compatible = "ti,ads1015";
+		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* Analog Input 1 - AIN0 single-ended, 0-3.3V */
+		channel@4 {
+			reg = <4>;
+			ti,gain = <1>;
+		};
+
+		/* Analog Input 2 - AIN1 single-ended, 0-3.3V */
+		channel@5 {
+			reg = <5>;
+			ti,gain = <1>;
+		};
+
+		/* Analog Input 3 - AIN2 single-ended, 0-3.3V */
+		channel@6 {
+			reg = <6>;
+			ti,gain = <1>;
+		};
+	};
+
+	/*
+	 * Pimoroni Automation HAT - SN3218 LED Driver
+	 * TODO: Add LED nodes for Input (reg 13-15), Output (reg 4-6),
+	 * Relay (reg 7-12) and Analog (reg 1-3) indicator LEDs once
+	 * GPIO support is enabled for those functions.
+	 */
+	automation_hat_leds: led-controller@54 {
+		compatible = "si-en,sn3218";
+		reg = <0x54>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		led@16 {
+			reg = <16>;
+			label = "automation-hat:red:warn";
+		};
+
+		led@17 {
+			reg = <17>;
+			label = "automation-hat:green:comms";
+		};
+
+		led@18 {
+			reg = <18>;
+			label = "automation-hat:blue:power";
+		};
+	};
+};
+

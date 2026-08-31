@@ -437,10 +437,10 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 		       ? LOOPBACK_ENABLE : 0, se->base + SE_SPI_LOOPBACK);
 	if (cs_changed)
 		writel(chipselect, se->base + SE_SPI_DEMUX_SEL);
-	if (mode_changed & SE_SPI_CPHA)
+	if (mode_changed & SPI_CPHA)
 		writel((spi_slv->mode & SPI_CPHA)
 		       ? CPHA : 0, se->base + SE_SPI_CPHA);
-	if (mode_changed & SE_SPI_CPOL)
+	if (mode_changed & SPI_CPOL)
 		writel((spi_slv->mode & SPI_CPOL)
 		       ? CPOL : 0, se->base + SE_SPI_CPOL);
 	if ((mode_changed & SPI_CS_HIGH) || (cs_changed && (spi_slv->mode & SPI_CS_HIGH)))
@@ -530,10 +530,15 @@ static int setup_gsi_xfer(struct spi_transfer *xfer, struct spi_geni_master *mas
 		return ret;
 	}
 
-	if (!xfer->cs_change) {
-		if (!list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers))
-			peripheral.fragmentation = FRAGMENTATION;
-	}
+	/*
+	 * Set fragmentation to keep CS asserted after this transfer when:
+	 *  - non-last transfer with cs_change=0: keep CS asserted between chained transfers
+	 *  - last transfer with cs_change=1: keep CS asserted after the message
+	 *    (e.g. TPM TIS SPI uses cs_change=1 on single-transfer messages to
+	 *     keep CS asserted across header, wait-state and data phases)
+	 */
+	peripheral.fragmentation = list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers) ?
+				   xfer->cs_change : !xfer->cs_change;
 
 	if (peripheral.cmd & SPI_RX) {
 		dmaengine_slave_config(mas->rx, &config);
@@ -930,6 +935,20 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 		mas->cur_xfer_mode = GENI_SE_DMA;
 	geni_se_select_mode(se, mas->cur_xfer_mode);
 
+<<<<<<< TARGET BRANCH (f573fa Merge "QCLINUX: Revert "UPSTREAM: spi-geni-qcom: remove manu)
+=======
+	/*
+	 * Set FRAGMENTATION to keep CS asserted after this transfer when:
+	 *  - non-last transfer with cs_change=0: keep CS asserted between chained transfers
+	 *  - last transfer with cs_change=1: keep CS asserted after the message
+	 *    (e.g. TPM TIS SPI uses cs_change=1 on single-transfer messages to
+	 *     keep CS asserted across header, wait-state and data phases)
+	 */
+	if (list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers) ?
+	    xfer->cs_change : !xfer->cs_change)
+		m_params = FRAGMENTATION;
+
+>>>>>>> SOURCE BRANCH (dc510c Merge "PENDING: arm64: dts: qcom: lemans-amr: Enable Modem c)
 	/*
 	 * Lock around right before we start the transfer since our
 	 * interrupt could come in at any time now.

@@ -23,6 +23,7 @@
 
 /* Register offset definitions */
 #define TSCSS_TSC_CONTROL_CNTCR			0x0
+#define TSCSS_TSC_PIPELINE_STAGES               0x4
 #define TSCSS_TSC_CONTROL_CNTCV_LO		0x8
 #define TSCSS_TSC_CONTROL_CNTCV_HI		0xC
 #define TSCSS_TSC_CONTROL_CNTCV_FRAC		0x10
@@ -450,21 +451,6 @@ static void qcom_etu_event_handler(struct qcom_etu_slice *etu, struct qcom_ptp_t
 		ts = (temp << NSEC_SHFT) | etu->etu_tsc_nsec;
 	}
 
-	if (ts != etu->etu_tsc_timestamp) {
-		extts_event.type = PTP_CLOCK_EXTTS;
-		extts_event.index = etu->extts_index;
-		extts_event.timestamp = ts;
-
-		pr_debug("type:%d index:%d timestamp:%llu\n", extts_event.type,
-				extts_event.index, extts_event.timestamp);
-
-		ptp_clock_event(etu->ptp_clock, &extts_event);
-	}
-	etu->etu_tsc_timestamp = ts;
-
-	pr_debug("etu_tsc_sec:%u etu_tsc_nsec:%u etu_tsc_timestamp:%llu\n",
-			etu->etu_tsc_sec, etu->etu_tsc_nsec, etu->etu_tsc_timestamp);
-
 	etu->etu_gctr_sec = readl_relaxed(TSCSS_TSC_ETU_SLICE_BASE(etu->etu_baseaddr,
 				etu->extts_slice_num, TSCSS_ETU_SLICE_GCTR_TS_HI));
 
@@ -476,11 +462,34 @@ static void qcom_etu_event_handler(struct qcom_etu_slice *etu, struct qcom_ptp_t
 
 	/* Concatenate GCTR_TS_HI(31:0) & GCTR_TS_LO(31:8) and divide with 19.2MHz */
 	etu->global_qtimer = (((u64)etu->etu_gctr_sec << 24) |
-			(etu->etu_gctr_nsec >> 8)) / XO_MHZ;
+			(etu->etu_gctr_nsec >> 8));
 
-	pr_debug("etu_gctr_sec:%u etu_gctr_nsec:%u global_qtimer:%x extts_event_type %d\n",
-			etu->etu_gctr_sec, etu->etu_gctr_nsec,
-			etu->global_qtimer, etu->extts_event_type);
+	if (ts != etu->etu_tsc_timestamp) {
+		extts_event.type = PTP_CLOCK_EXTTS;
+		extts_event.index = etu->extts_index;
+		extts_event.timestamp = ts;
+
+		pr_debug("type:%d index:%d TSC-timestamp:%llu\n", extts_event.type,
+				extts_event.index, extts_event.timestamp);
+
+		ptp_clock_event(etu->ptp_clock, &extts_event);
+
+		if (etu->extts_event_sel == 0) {
+			extts_event.timestamp = etu->global_qtimer;
+
+			pr_debug("type:%d index:%d GCTR-timestamp:%llu\n", extts_event.type,
+					extts_event.index, extts_event.timestamp);
+
+			ptp_clock_event(etu->ptp_clock, &extts_event);
+		}
+	}
+	etu->etu_tsc_timestamp = ts;
+
+	pr_debug("etu_tsc_sec:%u etu_tsc_nsec:%u etu_tsc_timestamp:%llu\n",
+			etu->etu_tsc_sec, etu->etu_tsc_nsec, etu->etu_tsc_timestamp);
+
+	pr_debug("etu_gctr_sec:%u etu_gctr_nsec:%u global_qtimer:%x\n",
+			etu->etu_gctr_sec, etu->etu_gctr_nsec, etu->global_qtimer);
 
 	regval = readl_relaxed(TSCSS_TSC_ETU_SLICE_BASE(etu->etu_baseaddr,
 				etu->extts_slice_num, TSCSS_TSC_SLICE_ETU_CFG));
@@ -604,6 +613,11 @@ static void qcom_tsc_configure_etu(struct qcom_ptp_tsc *timer, int slice)
 	regval |= BIT(0);
 	tsc_write_readback(TSCSS_TSC_ETU_SLICE_BASE(base, slice, TSCSS_TSC_SLICE_ETU_CFG), regval,
 			BIT(0));
+
+	/* Enable SW trigger for slice with event_sel as 0.*/
+	if (timer->etu_slice[slice].extts_event_sel == 0)
+		writel_relaxed(BIT(1), TSCSS_TSC_ETU_SLICE_BASE(base, slice,
+			       TSCSS_ETU_SLICE_SW_TRIG_CFG));
 
 	/* Bitmask of configured slices.*/
 	timer->configured_slice_mask |= BIT(slice);
@@ -1028,7 +1042,7 @@ static int qcom_ptp_tsc_probe(struct platform_device *pdev)
 {
 	struct qcom_ptp_tsc *timer;
 	struct resource *r_mem;
-	u32 cntr_val;
+	u32 cntr_val, pipeline_stages;
 	int fusa_irq, ret;
 
 	timer = devm_kzalloc(&pdev->dev, sizeof(*timer), GFP_KERNEL);
@@ -1129,6 +1143,9 @@ static int qcom_ptp_tsc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to register ptp clock\n");
 		goto out;
 	}
+
+	if (!of_property_read_u32(pdev->dev.of_node, "qcom,tsc-pipeline-stages", &pipeline_stages))
+		writel_relaxed(pipeline_stages, timer->baseaddr + TSCSS_TSC_PIPELINE_STAGES);
 
 	qcom_tsc_etu_get_data(pdev, timer);
 

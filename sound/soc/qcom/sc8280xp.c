@@ -29,6 +29,13 @@
 #define MCLK_FREQ		12288000
 #define MCLK_NATIVE_FREQ	11289600
 
+#define I2S_MCLKFS	256
+#define I2S_SLOTSIZE	16
+#define I2S_MCLK_RATE(rate, channels) \
+		((rate) * I2S_MCLKFS)
+#define I2S_BIT_RATE(rate, channels) \
+		((rate) * (channels) * I2S_SLOTSIZE)
+
 static struct snd_soc_dapm_widget sc8280xp_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
@@ -51,6 +58,7 @@ struct snd_soc_common {
 	int codec_dai_fmt[APM_PORT_MAX];
 	bool jack_enable;
 	bool mi2s_mclk_enable;
+	bool codec_clk_enable;
 };
 
 static struct snd_soc_common qcs9100_priv_data = {
@@ -65,6 +73,7 @@ static struct snd_soc_common qcm6490_priv_data = {
 	.dapm_widgets = sc8280xp_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(sc8280xp_dapm_widgets),
 	.jack_enable = true,
+	.codec_clk_enable = true,
 };
 
 static struct snd_soc_common qcs6490_priv_data = {
@@ -72,6 +81,7 @@ static struct snd_soc_common qcs6490_priv_data = {
 	.dapm_widgets = sc8280xp_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(sc8280xp_dapm_widgets),
 	.jack_enable = true,
+	.codec_clk_enable = true,
 };
 
 static struct snd_soc_common qcs8275_priv_data = {
@@ -126,21 +136,19 @@ struct sc8280xp_snd_data {
 	bool jack_setup;
 };
 
-static inline int get_mclk_feq(unsigned int rate)
+static inline int sc8280xp_get_mclk_freq(struct snd_pcm_hw_params *params)
 {
-	int freq = MCLK_FREQ;
-
-	switch (rate) {
+	switch (params_rate(params)) {
 	case SNDRV_PCM_RATE_11025:
 	case SNDRV_PCM_RATE_44100:
 	case SNDRV_PCM_RATE_88200:
-		freq = MCLK_NATIVE_FREQ;
+		return I2S_MCLK_RATE(44100, params_channels(params));
 		break;
 	default:
 		break;
 	}
 
-	return freq;
+	return I2S_MCLK_RATE(params_rate(params), params_channels(params));
 }
 
 static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
@@ -222,12 +230,12 @@ static int sc8280xp_snd_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct sc8280xp_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
-	int mclk_freq = get_mclk_feq(params_rate(params));
+	int mclk_freq = sc8280xp_get_mclk_freq(params);
 
 	switch (cpu_dai->id) {
-	case PRIMARY_MI2S_RX...QUATERNARY_MI2S_TX:
-	case QUINARY_MI2S_RX...QUINARY_MI2S_TX:
-	case SENARY_MI2S_RX...SENARY_MI2S_TX:
+	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
+	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
+	case SENARY_MI2S_RX ... SENARY_MI2S_TX:
 		snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
 
 		if (pdata->snd_soc_common_priv->codec_dai_fmt[cpu_dai->id])
@@ -238,6 +246,10 @@ static int sc8280xp_snd_hw_params(struct snd_pcm_substream *substream,
 			snd_soc_dai_set_sysclk(cpu_dai,
 					       LPAIF_MI2S_MCLK, mclk_freq,
 					       SND_SOC_CLOCK_IN);
+
+		if (pdata->snd_soc_common_priv->codec_clk_enable)
+			snd_soc_dai_set_sysclk(codec_dai, 0, mclk_freq, SND_SOC_CLOCK_IN);
+
 		break;
 	default:
 		break;

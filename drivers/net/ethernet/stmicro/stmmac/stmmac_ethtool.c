@@ -483,6 +483,28 @@ static int stmmac_nway_reset(struct net_device *dev)
 	return phylink_ethtool_nway_reset(priv->phylink);
 }
 
+static int stmmac_fusa_reset(struct net_device *dev, u32 *flags)
+{
+	struct stmmac_priv *priv = netdev_priv(dev);
+
+	if (!netif_running(dev))
+		return -ENETDOWN;
+
+	if (test_bit(STMMAC_DOWN, &priv->state))
+		return -ENETDOWN;
+
+	if (!(*flags & (ETH_RESET_MAC | ETH_RESET_DMA)))
+		return -EOPNOTSUPP;
+
+	/* Schedules an asynchronous reset; device will be re-initialized
+	 * via the service workqueue. Caller should poll for link readiness.
+	 */
+	stmmac_global_err(priv);
+	*flags &= ~(ETH_RESET_MAC | ETH_RESET_DMA);
+
+	return 0;
+}
+
 static void stmmac_get_ringparam(struct net_device *netdev,
 				 struct ethtool_ringparam *ring,
 				 struct kernel_ethtool_ringparam *kernel_ring,
@@ -1367,6 +1389,7 @@ static const struct ethtool_ops stmmac_ethtool_ops = {
 	.set_tunable = stmmac_set_tunable,
 	.get_link_ksettings = stmmac_ethtool_get_link_ksettings,
 	.set_link_ksettings = stmmac_ethtool_set_link_ksettings,
+	.reset = stmmac_fusa_reset,
 	.set_priv_flags = stmmac_set_priv_flag,
 	.get_priv_flags = stmmac_get_priv_flag,
 };

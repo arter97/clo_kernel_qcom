@@ -25,6 +25,7 @@ properties:
 
       - items:
           - enum:
+              - qcom,qcs8300-cci
               - qcom,sa8775p-cci
               - qcom,sc7280-cci
               - qcom,sdm845-cci

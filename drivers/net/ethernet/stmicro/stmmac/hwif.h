@@ -68,6 +68,9 @@ struct stmmac_desc_ops {
 	/* Return the reception status looking at the RDES1 */
 	int (*rx_status)(struct stmmac_extra_stats *x,
 			 struct dma_desc *p);
+	/* Check CRC/CSUM/overflow error counters against threshold (FuSa) */
+	int (*check_rx_err_status)(struct stmmac_extra_stats *x,
+				   struct dma_desc *p, u32 threshold);
 	void (*rx_extended_status)(struct stmmac_extra_stats *x,
 				   struct dma_extended_desc *p);
 	/* Set tx timestamp enable bit */
@@ -128,6 +131,8 @@ struct stmmac_desc_ops {
 	stmmac_do_callback(__priv, desc, get_rx_frame_len, __args)
 #define stmmac_rx_status(__priv, __args...) \
 	stmmac_do_callback(__priv, desc, rx_status, __args)
+#define stmmac_check_rx_err_status(__priv, __args...) \
+	stmmac_do_callback(__priv, desc, check_rx_err_status, __args)
 #define stmmac_rx_extended_status(__priv, __args...) \
 	stmmac_do_void_callback(__priv, desc, rx_extended_status, __args)
 #define stmmac_enable_tx_timestamp(__priv, __args...) \

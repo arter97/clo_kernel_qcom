@@ -391,6 +391,8 @@ struct adv7511 {
 
 	struct device *codec_dev;
 	hdmi_codec_plugged_cb plugged_cb;
+
+	struct mutex eld_lock;
 };
 
 #ifdef CONFIG_DRM_I2C_ADV7511_CEC

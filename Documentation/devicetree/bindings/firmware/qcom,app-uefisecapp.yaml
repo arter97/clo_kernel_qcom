@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/firmware/qcom,app-uefisecapp.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: UEFISecApp client driver to provide access to EFI variables.
+
+description:
+   This facilitates communication with the uefisecapp Secure Application
+   in QTEE firmware OS to provide access to EFI variables on platforms
+   without EFI runtime support.
+
+maintainers:
+  - Harshal Dev <hdev@qti.qualcomm.com>
+
+properties:
+  compatible:
+    const: qcom,app-uefisecapp
+
+required:
+  - compatible
+
+additionalProperties: false
+
+examples:
+  - |
+    firmware {
+        qcom_app_uefisecapp {
+            compatible = "qcom,app-uefisecapp";
+        };
+    };

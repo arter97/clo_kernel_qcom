@@ -624,20 +624,20 @@ static const struct rpmhpd_desc x1e80100_desc = {
 
 /* QCS8300 RPMH power domains */
 static struct rpmhpd *qcs8300_rpmhpds[] = {
-	[QCS8300_CX] = &cx,
-	[QCS8300_CX_AO] = &cx_ao,
-	[QCS8300_EBI] = &ebi,
-	[QCS8300_GFX] = &gfx,
-	[QCS8300_LCX] = &lcx,
-	[QCS8300_LMX] = &lmx,
-	[QCS8300_MMCX] = &mmcx,
-	[QCS8300_MMCX_AO] = &mmcx_ao,
-	[QCS8300_MXC] = &mxc,
-	[QCS8300_MXC_AO] = &mxc_ao,
-	[QCS8300_MX] = &mx,
-	[QCS8300_MX_AO] = &mx_ao,
-	[QCS8300_NSP0] = &nsp0,
-	[QCS8300_NSP1] = &nsp1,
+	[RPMHPD_CX] = &cx,
+	[RPMHPD_CX_AO] = &cx_ao,
+	[RPMHPD_EBI] = &ebi,
+	[RPMHPD_GFX] = &gfx,
+	[RPMHPD_LCX] = &lcx,
+	[RPMHPD_LMX] = &lmx,
+	[RPMHPD_MMCX] = &mmcx,
+	[RPMHPD_MMCX_AO] = &mmcx_ao,
+	[RPMHPD_MXC] = &mxc,
+	[RPMHPD_MXC_AO] = &mxc_ao,
+	[RPMHPD_MX] = &mx,
+	[RPMHPD_MX_AO] = &mx_ao,
+	[RPMHPD_NSP0] = &nsp0,
+	[RPMHPD_NSP1] = &nsp1,
 };
 
 static const struct rpmhpd_desc qcs8300_desc = {

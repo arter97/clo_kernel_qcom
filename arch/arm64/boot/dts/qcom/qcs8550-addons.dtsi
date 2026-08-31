@@ -28,6 +28,10 @@
 			compatible = "qcom,mem-object";
 		};
 
+		qcom_app_uefisecapp {
+			compatible = "qcom,app-uefisecapp";
+		};
+
 		qcom_smcinvoke {
 			compatible = "qcom,smcinvoke";
 		};

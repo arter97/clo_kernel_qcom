@@ -1838,10 +1838,10 @@
 
 			#interrupt-cells = <1>;
 			interrupt-map-mask = <0 0 0 0x7>;
-			interrupt-map = <0 0 0 1 &intc 0 0 GIC_SPI 434 IRQ_TYPE_LEVEL_HIGH>, //INTa
-					<0 0 0 2 &intc 0 0 GIC_SPI 435 IRQ_TYPE_LEVEL_HIGH>, //INTb
-					<0 0 0 3 &intc 0 0 GIC_SPI 438 IRQ_TYPE_LEVEL_HIGH>, //INTc
-					<0 0 0 4 &intc 0 0 GIC_SPI 439 IRQ_TYPE_LEVEL_HIGH>; //INTd
+			interrupt-map = <0 0 0 1 &intc GIC_SPI 434 IRQ_TYPE_LEVEL_HIGH>, //INTa
+					<0 0 0 2 &intc GIC_SPI 435 IRQ_TYPE_LEVEL_HIGH>, //INTb
+					<0 0 0 3 &intc GIC_SPI 438 IRQ_TYPE_LEVEL_HIGH>, //INTc
+					<0 0 0 4 &intc GIC_SPI 439 IRQ_TYPE_LEVEL_HIGH>; //INTd
 
 			iommus = <&pcie_smmu 0x00 0x7f>;
 			iommu-map = <0x0 &pcie_smmu 0x0000 0x1>,
@@ -1899,10 +1899,10 @@
 
 			#interrupt-cells = <1>;
 			interrupt-map-mask = <0 0 0 0x7>;
-			interrupt-map = <0 0 0 1 &intc 0 0 GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>, //INTa
-					<0 0 0 2 &intc 0 0 GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>, //INTb
-					<0 0 0 3 &intc 0 0 GIC_SPI 150 IRQ_TYPE_LEVEL_HIGH>, //INTc
-					<0 0 0 4 &intc 0 0 GIC_SPI 151 IRQ_TYPE_LEVEL_HIGH>; //INTd
+			interrupt-map = <0 0 0 1 &intc GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>, //INTa
+					<0 0 0 2 &intc GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>, //INTb
+					<0 0 0 3 &intc GIC_SPI 150 IRQ_TYPE_LEVEL_HIGH>, //INTc
+					<0 0 0 4 &intc GIC_SPI 151 IRQ_TYPE_LEVEL_HIGH>; //INTd
 
 			iommus = <&pcie_smmu 0x80 0x7f>;
 			iommu-map = <0x0 &pcie_smmu 0x0080 0x1>,

@@ -3297,6 +3297,7 @@ static int seca_tlmm_probe(struct platform_device *pdev)
 static struct platform_driver seca_tlmm_driver = {
 	.driver = {
 		.name = "seca-pinctrl",
+		.pm = &msm_pinctrl_dev_pm_ops,
 		.of_match_table = seca_tlmm_of_match,
 	},
 	.probe = seca_tlmm_probe,

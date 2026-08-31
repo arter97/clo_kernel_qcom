@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/nvmem/layouts/qcom,sa8797p-eth-mac.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Qualcomm SA8797P Ethernet MAC address NVMEM layout
+
+maintainers:
+  - Hongmei Xu <hongmeix@qti.qualcomm.com>
+
+description:
+  Layout driver for reading Ethernet MAC addresses from Qualcomm eFuse
+  (QFPROM). Supports cells where one or more output bytes are
+  non-contiguous in eFuse via the qcom,byte-fixups property.
+
+select: false
+
+properties:
+  compatible:
+    const: qcom,sa8797p-eth-mac
+
+patternProperties:
+  "^eth[0-9]+-mac@[0-9a-f]+$":
+    type: object
+    description: Ethernet MAC address cell
+
+    properties:
+      reg:
+        maxItems: 1
+
+      qcom,byte-fixups:
+        $ref: /schemas/types.yaml#/definitions/uint32-array
+        description:
+          Pairs of <byte_idx src_offset> for bytes that are stored
+          at a non-contiguous eFuse offset. byte_idx is the zero-based
+          index of the output byte to override, and src_offset is the
+          absolute byte offset within the NVMEM device where the source
+          byte resides. The number of elements must be a multiple of 2.
+        minItems: 2
+        maxItems: 12
+        multipleOf: 2
+    required:
+      - reg
+
+    additionalProperties: false
+
+required:
+  - compatible
+
+additionalProperties: false
+
+examples:
+  - |
+    efuse@360d4000 {
+        compatible = "qcom,sa8797p-qfprom", "qcom,qfprom";
+        reg = <0x360d4000 0x4000>;
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        nvmem-layout {
+            compatible = "qcom,sa8797p-eth-mac";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            eth1_mac: eth1-mac@320 {
+                reg = <0x320 0x6>;
+                qcom,byte-fixups = <5 0x326>;
+            };
+        };
+    };
+
+...

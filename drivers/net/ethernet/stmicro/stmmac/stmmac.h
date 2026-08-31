@@ -224,6 +224,7 @@ struct stmmac_priv {
 	u32 sarc_type;
 
 	unsigned int rx_copybreak;
+	unsigned int rx_err_log_threshold;
 	u32 rx_riwt[MTL_MAX_TX_QUEUES];
 	int hwts_rx_en;
 
@@ -312,6 +313,7 @@ struct stmmac_priv {
 	unsigned long state;
 	struct workqueue_struct *wq;
 	struct work_struct service_task;
+	struct work_struct uevent_work;
 
 	/* Workqueue for handling FPE hand-shaking */
 	unsigned long fpe_task_state;
@@ -374,6 +376,8 @@ int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt);
 int stmmac_reinit_ringparam(struct net_device *dev, u32 rx_size, u32 tx_size);
 int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
 void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable);
+void stmmac_global_err(struct stmmac_priv *priv);
+void stmmac_handle_switch_reset(struct stmmac_priv *priv);
 
 static inline bool stmmac_xdp_is_enabled(struct stmmac_priv *priv)
 {

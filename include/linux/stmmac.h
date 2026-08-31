@@ -183,6 +183,12 @@ enum stmmac_fpe_task_state_t {
 	__FPE_TASK_SCHED,
 };
 
+enum stmmac_uevent_type {
+	FUSA_ERROR = 0,
+	MAC_DOWN,
+	MAC_UP,
+};
+
 struct stmmac_fpe_cfg {
 	bool enable;				/* FPE enable */
 	bool hs_enable;				/* FPE handshake enable */
@@ -247,6 +253,7 @@ struct dwxgmac_addrs {
 #define STMMAC_FLAG_EN_TX_LPI_CLOCKGATING	BIT(11)
 #define STMMAC_FLAG_HWTSTAMP_CORRECT_LATENCY	BIT(12)
 #define STMMAC_FLAG_USE_THREADED_NAPI	BIT(13)
+#define STMMAC_FLAG_HAS_ERROR_UEVENT	BIT(14)
 
 struct plat_stmmacenet_data {
 	u32 snps_id;
@@ -352,5 +359,6 @@ struct plat_stmmacenet_data {
 	const struct dwmac4_addrs *dwmac4_addrs;
 	const struct dwxgmac_addrs *dwxgmac_addrs;
 	unsigned int flags;
+	void (*report_uevents)(struct stmmac_priv *priv, enum stmmac_uevent_type event);
 };
 #endif

@@ -7,6 +7,7 @@
 
 #include <linux/delay.h>
 #include <linux/of.h>
+#include <linux/kobject.h>
 #include <linux/of_platform.h>
 #include <linux/pcs-xpcs-qcom.h>
 #include <linux/platform_device.h>
@@ -268,6 +269,22 @@ static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *qxpcs)
 
 		switch (qxpcs->phy_interface) {
 		case PHY_INTERFACE_MODE_USXGMII:
+			if (qxpcs->needs_aneg) {
+				ret = qcom_xpcs_poll_bit_set(qxpcs,
+							     DW_VR_MII_AN_INTR_STS,
+							     DW_VR_MII_ANCMPLT_INTR);
+				if (ret < 0)
+					return ret;
+
+				XPCSDBG("XPCS AN completed\n");
+				ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
+				if (ret < 0)
+					return ret;
+
+				/* Clear the AN completion interrupt status */
+				ret &= ~DW_VR_MII_ANCMPLT_INTR;
+				qcom_xpcs_write(qxpcs, DW_VR_MII_AN_INTR_STS, ret);
+			}
 			qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_STS);
 			ret = qcom_xpcs_poll_bit_set(qxpcs,
 						     DW_SR_MII_MMD_STS, DW_SR_MII_STS_LINK_STS);
@@ -495,8 +512,12 @@ recover:
 					goto recover;
 				else
 					XPCSDBG("XPCS AN completed\n");
+
 				ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
-				/* Clear the IOC status */
+				if (ret < 0)
+					goto recover;
+
+				/* Clear the AN completion interrupt status */
 				ret &= ~DW_VR_MII_ANCMPLT_INTR;
 				qcom_xpcs_write(qxpcs, DW_VR_MII_AN_INTR_STS, ret);
 			}
@@ -574,6 +595,27 @@ static void qcom_xpcs_get_state(struct phylink_pcs *pcs,
 	}
 }
 
+static void qcom_xpcs_report_uevent(struct dw_xpcs_qcom *qxpcs)
+{
+	char event_type[32];
+	char *envp[2];
+
+	snprintf(event_type, sizeof(event_type), "SAFETY_EVENT=FUSA_ERROR");
+	envp[0] = event_type;
+	envp[1] = NULL;
+
+	if (qxpcs->dev)
+		kobject_uevent_env(&qxpcs->dev->kobj, KOBJ_CHANGE, envp);
+}
+
+static void qcom_xpcs_uevent_task(struct work_struct *work)
+{
+	struct dw_xpcs_qcom *qxpcs = container_of(work, struct dw_xpcs_qcom,
+						   uevent_work);
+
+	qcom_xpcs_report_uevent(qxpcs);
+}
+
 irqreturn_t qcom_xpcs_fusa_isr(int irq, void *dev_data)
 {
 	struct dw_xpcs_qcom *qxpcs = (struct dw_xpcs_qcom *)dev_data;
@@ -598,6 +640,7 @@ irqreturn_t qcom_xpcs_fusa_isr(int irq, void *dev_data)
 	if (ret > 0) {
 		pr_debug("Fusa XPCS IRQ %d\n", ret);
 		qxpcs->pcs_fusa_error_count++;
+		schedule_work(&qxpcs->uevent_work);
 		qcom_xpcs_write(qxpcs, DW_VR_XS_PCS_SFTY_UE_INTR0, 0x0);
 		return IRQ_HANDLED;
 	}
@@ -1175,6 +1218,8 @@ static int qcom_xpcs_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
+	qxpcs->dev = &pdev->dev;
+
 	qxpcs->pcs_intr = platform_get_irq_byname_optional(pdev, "pcs_intr");
 	if (qxpcs->pcs_intr < 0) {
 		pr_info("XPCS IRQ is not enabled\n");
@@ -1189,6 +1234,8 @@ static int qcom_xpcs_probe(struct platform_device *pdev)
 	qxpcs->pcs_fusa_intr = platform_get_irq_byname_optional(pdev, "sfty");
 	if (qxpcs->pcs_fusa_intr < 0)
 		pr_info("XPCS FUSA IRQ is not enabled\n");
+
+	INIT_WORK(&qxpcs->uevent_work, qcom_xpcs_uevent_task);
 
 	qxpcs->reset_serdes =
 		devm_reset_control_get_optional(&pdev->dev, "serdes_reset");

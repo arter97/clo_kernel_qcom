@@ -11,3 +11,6 @@ obj-$(CONFIG_QCOM_SI_CORE_MEM_OBJECT) += mem_object.o
 mem_object-objs := xts/mem-object.o
 
 obj-$(CONFIG_QCOM_SI_CORE_XTS) += si_core_xts/
+
+obj-$(CONFIG_QCOM_SI_CORE_UEFISECAPP) += uefisecapp.o
+uefisecapp-objs := xts/uefisecapp.o

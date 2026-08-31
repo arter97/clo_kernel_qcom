@@ -39,6 +39,38 @@ static int dwxgmac2_get_rx_status(struct stmmac_extra_stats *x,
 	return good_frame;
 }
 
+static int dwxgmac2_check_rx_err_status(struct stmmac_extra_stats *x,
+					struct dma_desc *p, u32 threshold)
+{
+	unsigned int rdes3 = le32_to_cpu(p->des3);
+
+	if (likely(!((rdes3 & XGMAC_RDES3_ES) && (rdes3 & XGMAC_RDES3_LD))))
+		return good_frame;
+
+	if (!threshold)
+		threshold = XGMAC_RX_ERR_THRESHOLD;
+
+	switch ((rdes3 & XGMAC_RDES3_L2T) >> XGMAC_RDES3_L2T_SHIFT) {
+	case XGMAC_RDES3_L2T_CRC_ERR:
+		x->rx_crc_errors++;
+		if (x->rx_crc_errors % threshold == 0)
+			return rx_pkt_error;
+		break;
+	case XGMAC_RDES3_L2T_CSUM_ERR:
+		x->ipc_csum_error++;
+		if (x->ipc_csum_error % threshold == 0)
+			return rx_pkt_error;
+		break;
+	case XGMAC_RDES3_L2T_OVERFLOW:
+		x->rx_gmac_overflow++;
+		if (x->rx_gmac_overflow % threshold == 0)
+			return rx_pkt_error;
+		break;
+	}
+
+	return discard_frame;
+}
+
 static int dwxgmac2_get_tx_len(struct dma_desc *p)
 {
 	return (le32_to_cpu(p->des2) & XGMAC_TDES2_B1L);
@@ -357,6 +389,7 @@ static void dwxgmac2_set_hw_ts(struct dma_desc *p, u32 pid)
 const struct stmmac_desc_ops dwxgmac210_desc_ops = {
 	.tx_status = dwxgmac2_get_tx_status,
 	.rx_status = dwxgmac2_get_rx_status,
+	.check_rx_err_status = dwxgmac2_check_rx_err_status,
 	.get_tx_len = dwxgmac2_get_tx_len,
 	.get_tx_owner = dwxgmac2_get_tx_owner,
 	.set_tx_owner = dwxgmac2_set_tx_owner,
