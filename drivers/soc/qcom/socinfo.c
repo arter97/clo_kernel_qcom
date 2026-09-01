@@ -55,6 +55,7 @@ enum {
 	HW_PLATFORM_HDK = 31,
 	HW_PLATFORM_ATP = 33,
 	HW_PLATFORM_IDP = 34,
+	HW_PLATFORM_WDP = 36,
 	HW_PLATFORM_QXR = 38,
 	HW_PLATFORM_QAR = 44,
 	HW_PLATFORM_INVALID
@@ -81,6 +82,7 @@ static const char * const hw_platform[] = {
 	[HW_PLATFORM_HDK] = "HDK",
 	[HW_PLATFORM_ATP] = "ATP",
 	[HW_PLATFORM_IDP] = "IDP",
+	[HW_PLATFORM_WDP] = "WDP",
 	[HW_PLATFORM_QXR] = "QXR",
 	[HW_PLATFORM_QAR] = "QAR",
 };
@@ -615,6 +617,7 @@ static const struct soc_id soc_id[] = {
 	{ 646, "QCS_PINEAPPLE" },
 	{ 702, "QCS8625_PINEAPPLE" },
 	{ 712, "VOLCANOP" },
+	{ 788, "SNOWMASS" },
 };
 
 static struct attribute *msm_custom_socinfo_attrs[MAX_SOCINFO_ATTRS];

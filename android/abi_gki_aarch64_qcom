@@ -574,6 +574,7 @@
   device_match_name
   device_match_of_node
   device_move
+  device_node_to_regmap
   device_property_match_string
   device_property_present
   device_property_read_string
@@ -737,6 +738,7 @@
   dev_pm_qos_remove_notifier
   dev_pm_qos_remove_request
   dev_pm_qos_update_request
+  dev_pm_set_dedicated_wake_irq
   dev_pm_set_wake_irq
   _dev_printk
   __dev_queue_xmit
@@ -2401,6 +2403,7 @@
   pci_release_region
   pci_remove_root_bus
   pci_request_region
+  pci_rescan_bus
   pci_restore_state
   pci_save_state
   pci_scan_root_bus_bridge

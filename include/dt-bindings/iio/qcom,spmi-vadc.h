@@ -402,6 +402,7 @@
 #define ADC5_GEN4_USB_SNS_DIV20			0x11
 #define ADC5_GEN4_VIN_DIV20_MUX			0x12
 #define ADC5_GEN4_IIN				0x17
+#define ADC5_GEN4_TEMP_ALARM_LITE		0x18
 #define ADC5_GEN4_ATEST1			0x1b
 #define ADC5_GEN4_ATEST2			0x1c
 
@@ -428,6 +429,7 @@
 #define ADC5_GEN4_AMUX2_GPIO_100K_PU		0x4b
 #define ADC5_GEN4_AMUX3_GPIO_100K_PU		0x4c
 #define ADC5_GEN4_AMUX4_GPIO_100K_PU		0x4d
+#define ADC5_GEN4_AMUX5_GPIO_100K_PU		0x5e
 
 /* 400k pull-up */
 #define ADC5_GEN4_AMUX1_THM_400K_PU		0x64
@@ -444,6 +446,7 @@
 /* 1/3 Divider */
 #define ADC5_GEN4_VPH_PWR			0x8e
 #define ADC5_GEN4_VBAT_SNS_QBG			0x8f
+#define ADC5_GEN4_ICHG_FB			0xa1
 
 /* VADC scale function index */
 #define ADC_SCALE_DEFAULT				0

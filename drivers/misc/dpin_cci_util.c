@@ -14,6 +14,7 @@
 #include <linux/of.h>
 #include <linux/bitrev.h>
 #include <linux/delay.h>
+#include <linux/pm.h>
 #include "dpin_cci_util.h"
 
 /* CCI configuration — sourced from Device Tree at probe time. */
@@ -200,7 +201,7 @@ static int dpin_cci_util_read(struct dpin_cci_util_sensor_client *client,
 {
 	int rc;
 	struct dpin_cci_util_ctrl ctrl;
-	unsigned char buf[4];
+	unsigned char buf[4] = { 0 };
 
 	if (!out_buf || num_bytes == 0 || num_bytes > sizeof(buf))
 		return -EINVAL;
@@ -267,6 +268,21 @@ static int cci_configure(struct cci_util_dev *dpbdev)
 	return 0;
 }
 
+static int cci_ensure_configured(struct cci_util_dev *dev)
+{
+	int rc;
+
+	if (dev->configured)
+		return 0;
+
+	rc = cci_configure(dev);
+	if (rc < 0)
+		return rc;
+
+	dev->configured = true;
+	return 0;
+}
+
 /**
  * cci_util_lt7911_enable_i2c - open the LT7911 I2C gate via CCI.
  * @handle: opaque device handle obtained from cci_util_lt7911_get_device()
@@ -285,6 +301,12 @@ void cci_util_lt7911_enable_i2c(struct cci_util_handle *handle)
 
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return;
+	}
 
 	setting.reg_setting = i2c_enable;
 	setting.size        = ARRAY_SIZE(i2c_enable);
@@ -327,6 +349,12 @@ void cci_util_lt7911_disable_i2c(struct cci_util_handle *handle)
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
 
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return;
+	}
+
 	setting.reg_setting = i2c_disable;
 	setting.size        = ARRAY_SIZE(i2c_disable);
 	setting.addr_type   = DPIN_CCI_UTIL_I2C_TYPE_BYTE;
@@ -361,6 +389,30 @@ static void cci_util_release(struct cci_util_dev *dpbdev)
 	else
 		dev_dbg(&dpbdev->ppdev->dev, "[dpin_cci_util] MSM_CCI_RELEASE OK\n");
 }
+
+/**
+ * cci_util_lt7911_release_cci - release CCI power domain and clock votes.
+ * @handle: opaque device handle obtained from cci_util_lt7911_get_device()
+ *
+ * Sends MSM_CCI_RELEASE to release the camera subsystem power domain (GDSC)
+ * and clocks, allowing SoC / AOSD power collapse (sleep).
+ */
+void cci_util_lt7911_release_cci(struct cci_util_handle *handle)
+{
+	struct cci_util_dev *dev;
+
+	if (!handle || !handle->dev)
+		return;
+
+	mutex_lock(&g_cci_util_lock);
+	dev = handle->dev;
+	if (dev && dev->configured) {
+		cci_util_release(dev);
+		dev->configured = false;
+	}
+	mutex_unlock(&g_cci_util_lock);
+}
+EXPORT_SYMBOL_GPL(cci_util_lt7911_release_cci);
 
 /**
  * dpin_cci_util_read_seq - sequential byte read of @num_bytes registers
@@ -550,22 +602,13 @@ int cci_util_lt7911_read_chip_id(struct cci_util_handle *handle)
 	if (!handle || !handle->dev)
 		return -EINVAL;
 
-	/*
-	 * Hold the lock for the full duration: configure (if needed),
-	 * enable-I2C, read, and disable-I2C are all one atomic operation
-	 * with respect to driver removal.  This also closes the TOCTOU
-	 * window on the ->configured flag.
-	 */
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
 
-	if (!dev->configured) {
-		rc = cci_configure(dev);
-		if (rc < 0) {
-			mutex_unlock(&g_cci_util_lock);
-			return rc;
-		}
-		dev->configured = true;
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
 	}
 
 	/* enable I2C gate inline (no re-read of g_cci_util needed) */
@@ -628,6 +671,12 @@ int cci_util_lt7911_get_information(struct cci_util_handle *handle,
 
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
 
 	rc = lt7911_get_information(dev, read_seq0, read_seq1);
 	if (!rc) {
@@ -705,6 +754,12 @@ int cci_util_lt7911_get_interrupt_type(struct cci_util_handle *handle, int *irq_
 
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
 
 	rc = lt7911_write_regs(&dev->client, bank_sel, ARRAY_SIZE(bank_sel));
 	if (rc < 0) {
@@ -1175,6 +1230,12 @@ uint32_t cci_util_lt7911_get_version(struct cci_util_handle *handle)
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
 
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return 0;
+	}
+
 	rc = lt7911_write_regs(&dev->client, bank_sel, ARRAY_SIZE(bank_sel));
 	if (rc < 0) {
 		dev_err(&dev->ppdev->dev,
@@ -1241,6 +1302,12 @@ int cci_util_lt7911_read_hdcpkey(struct cci_util_handle *handle, uint8_t *buff, 
 
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
 
 	if (size % LT7911_BYTESIZE_PER_PAGE != 0)
 		++n_page;
@@ -1333,9 +1400,10 @@ int cci_util_lt7911_do_firmware_upgrade(struct cci_util_handle *handle,
 	if (!handle || !handle->dev)
 		return -EINVAL;
 
-	if (!fw || !fw->data || fw->size == 0) {
+	if (!fw || !fw->data || fw->size == 0 || fw->size >= LT7911UXC_FW_AREA_SIZE) {
 		dev_err(&handle->dev->ppdev->dev,
-			"[lt7911_fw] invalid firmware blob\n");
+			"[lt7911_fw] invalid firmware blob (size=%zu)\n",
+			fw ? fw->size : 0);
 		return -EINVAL;
 	}
 
@@ -1349,6 +1417,13 @@ int cci_util_lt7911_do_firmware_upgrade(struct cci_util_handle *handle,
 
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		kfree(fw_read_data);
+		return rc;
+	}
 
 	/* Step 1: open flash interface */
 	rc = lt7911uxc_config(&dev->client);
@@ -1459,6 +1534,12 @@ int cci_util_lt7911_reg_read(struct cci_util_handle *handle, int reg, int *reg_v
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
 
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
+
 	rc = dpin_cci_util_read(&dev->client,
 				(u8)reg,
 				DPIN_CCI_UTIL_I2C_TYPE_BYTE,
@@ -1500,11 +1581,58 @@ int cci_util_lt7911_reg_write(struct cci_util_handle *handle,
 	mutex_lock(&g_cci_util_lock);
 	dev = handle->dev;
 
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
+
 	rc = lt7911_write_regs(&dev->client, reg_cfg, reg_sz);
 	mutex_unlock(&g_cci_util_lock);
 	return rc;
 }
 EXPORT_SYMBOL_GPL(cci_util_lt7911_reg_write);
+
+/**
+ * cci_util_lt7911_reg_read_seq - read multiple consecutive bytes from a register.
+ * @handle:    opaque device handle obtained from cci_util_lt7911_get_device()
+ * @reg:       starting register address (8-bit)
+ * @out_buf:   caller-allocated buffer of at least @num_bytes bytes
+ * @num_bytes: number of consecutive bytes to read (1-32)
+ *
+ * Acquires g_cci_util_lock, performs a sequential CCI read, then releases
+ * the lock.  The I2C gate must already be open before calling.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int cci_util_lt7911_reg_read_seq(struct cci_util_handle *handle,
+				 u8 reg, u8 *out_buf, u16 num_bytes)
+{
+	int rc;
+	struct cci_util_dev *dev;
+
+	if (!handle || !handle->dev || !out_buf || num_bytes == 0 || num_bytes > 32)
+		return -EINVAL;
+
+	mutex_lock(&g_cci_util_lock);
+	dev = handle->dev;
+
+	rc = cci_ensure_configured(dev);
+	if (rc < 0) {
+		mutex_unlock(&g_cci_util_lock);
+		return rc;
+	}
+
+	rc = dpin_cci_util_read_seq(&dev->client, reg, out_buf, num_bytes);
+	mutex_unlock(&g_cci_util_lock);
+
+	if (rc < 0)
+		dev_err(&dev->ppdev->dev,
+			"[dpin_cci_util] reg_read_seq failed reg=0x%02x len=%u rc=%d\n",
+			reg, num_bytes, rc);
+	return rc;
+}
+EXPORT_SYMBOL_GPL(cci_util_lt7911_reg_read_seq);
 
 static int32_t cci_util_probe(struct platform_device *pdev)
 {
@@ -1556,11 +1684,39 @@ static int cci_util_remove(struct platform_device *pdev)
 	mutex_unlock(&g_cci_util_lock);
 
 	if (dpbdev) {
-		cci_util_release(dpbdev);
+		if (dpbdev->configured) {
+			cci_util_release(dpbdev);
+			dpbdev->configured = false;
+		}
 		kfree(dpbdev);
 	}
 	return 0;
 }
+
+static int cci_util_suspend(struct device *dev)
+{
+	struct cci_util_dev *dpbdev;
+
+	mutex_lock(&g_cci_util_lock);
+	dpbdev = g_cci_util;
+	if (dpbdev && dpbdev->configured) {
+		cci_util_release(dpbdev);
+		dpbdev->configured = false;
+	}
+	mutex_unlock(&g_cci_util_lock);
+
+	return 0;
+}
+
+static int cci_util_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops cci_util_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(cci_util_suspend, cci_util_resume)
+		SET_RUNTIME_PM_OPS(cci_util_suspend, cci_util_resume, NULL)
+};
 
 static const struct of_device_id cci_util_dt_match[] = {
 	{ .compatible = "lontium,lt7911uxc_cci_util" },
@@ -1574,6 +1730,7 @@ static struct platform_driver cci_util_platform_driver = {
 	.driver = {
 		.name = "lt7911uxc_cci_util",
 		.of_match_table = cci_util_dt_match,
+		.pm = &cci_util_pm_ops,
 		.suppress_bind_attrs = true,
 	},
 	.remove = cci_util_remove,

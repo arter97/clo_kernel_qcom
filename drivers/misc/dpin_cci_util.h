@@ -222,7 +222,7 @@ struct dpin_cci_util_ctrl {
  * without any risk of operating on uninitialised state.
  */
 
-#define LT7911UXC_VERSION_NUM   0x4020000
+#define LT7911UXC_VERSION_NUM   0x4020100
 #define LT7911_HDCPKEY_SIZE     32
 
 struct firmware;
@@ -258,8 +258,11 @@ int      cci_util_lt7911_do_firmware_upgrade(struct cci_util_handle *handle,
 int      cci_util_lt7911_reg_read(struct cci_util_handle *handle, int reg, int *reg_value);
 int      cci_util_lt7911_reg_write(struct cci_util_handle *handle,
 				   struct dpin_cci_util_i2c_reg_array *reg_cfg, int reg_sz);
+int      cci_util_lt7911_reg_read_seq(struct cci_util_handle *handle,
+				      u8 reg, u8 *out_buf, u16 num_bytes);
 void     cci_util_lt7911_enable_i2c(struct cci_util_handle *handle);
 void     cci_util_lt7911_disable_i2c(struct cci_util_handle *handle);
+void     cci_util_lt7911_release_cci(struct cci_util_handle *handle);
 int      cci_util_lt7911_get_information(struct cci_util_handle *handle,
 					 int *irq, int *width, int *height,
 					 int *fps, int *format, int *afreq, int *ach);
